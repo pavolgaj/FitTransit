@@ -1551,8 +1551,8 @@ class TransitFit():
         def Display(model):
             s=model+': '
             s+='t0, P, Rp, a, i, e, w, '
-            if not 'Uniform' in model: s+='c1, '
-            if (not 'Linear' in model) and (not 'Power2' in model): s+='c2, '
+            if 'Uniform' not in model: s+='c1, '
+            if ('Linear' not in model) and ('Power2' not in model): s+='c2, '
             if 'Nonlinear' in model: s+='c3, c4, '
             print(s[:-2])
 
@@ -1724,7 +1724,7 @@ class TransitFit():
         param=dict(params)
         for x in self.params:
             #add fixed parameters
-            if not x in param: param[x]=self.params[x]
+            if x not in param: param[x]=self.params[x]
         model=self.Model(param=param)   #calculate model
         return np.sum(((model-self.flux)/self.err)**2)
 
@@ -2047,7 +2047,7 @@ class TransitFit():
             param=dict(vals)
             for x in self.params:
                 #add fixed parameters
-                if not x in param: param[x]=self.params[x]
+                if x not in param: param[x]=self.params[x]
             return self.Model(param=param)
 
         #definition of pymc model
@@ -2272,8 +2272,8 @@ class TransitFit():
         if t is None: t=self.t
         if param is None: param=self.params
         u=[]
-        if not 'Uniform' in self.model: u.append(param['c1'])
-        if (not 'Linear' in self.model) or (not 'Power2' in self.model): u.append(param['c2'])
+        if 'Uniform' not in self.model: u.append(param['c1'])
+        if ('Linear' not in self.model) or ('Power2' not in self.model): u.append(param['c2'])
         if 'Nonlinear' in self.model:
             u.append(param['c3'])
             u.append(param['c4'])
@@ -2531,19 +2531,9 @@ class TransitFit():
             color='r'
             lw=1
 
-        if 'Apsidal' in self.model:
-            #primary
-            model_long=self.Model(t1,params,min_type=np.zeros(t1.shape))
-            if epoch and not double_ax: ax1.plot(E,model_long*k,color,linewidth=lw,label=legend[1],zorder=2)
-            else: ax1.plot(t1-offset,model_long*k,color,linewidth=lw,label=legend[1],zorder=2)
-            #secondary
-            model_long=self.Model(t1,params,min_type=np.ones(t1.shape))
-            if epoch and not double_ax: ax1.plot(E,model_long*k,color,linewidth=lw,label=legend[1],zorder=2)
-            else: ax1.plot(t1-offset,model_long*k,color,linewidth=lw,label=legend[1],zorder=2)
-        else:
-            model_long=self.Model(t1,params)
-            if epoch and not double_ax: ax1.plot(E,model_long*k,color,linewidth=lw,label=legend[1],zorder=2)
-            else: ax1.plot(t1-offset,model_long*k,color,linewidth=lw,label=legend[1],zorder=2)
+        model_long=self.Model(t1,params)
+        if epoch and not double_ax: ax1.plot(E,model_long*k,color,linewidth=lw,label=legend[1],zorder=2)
+        else: ax1.plot(t1-offset,model_long*k,color,linewidth=lw,label=legend[1],zorder=2)
 
         if model2:
             #plot second model
@@ -2799,28 +2789,13 @@ class TransitFit():
         self.epoch=np.linspace(E_min,E_max,n)
         t=t0+P*self.epoch
 
-        if 'Apsidal' in self.model:
-            typeA=np.append(np.zeros(t.shape),np.ones(t.shape))
-            t=np.append(t,t)
-            self.epoch=np.append(self.epoch,self.epoch)
-            i=np.argsort(np.append(np.arange(0,len(t),2),np.arange(1,len(t),2)))
-            t=t[i]
-            typeA=typeA[i]
-            self.epoch=self.epoch[i]
-            model=self.Model(t,params,min_type=typeA)
+        model=self.Model(t,params)
 
-            f=open(name,'w')
-            np.savetxt(f,np.column_stack((t+model,self.epoch,model,typeA)), fmt=["%14.7f",'%10.3f',"%+12.10f","%1d"]
-                       ,delimiter='    ',header='Obs. Time'.ljust(14,' ')+'    '+'Epoch'.ljust(10,' ')+'    model O-C'.ljust(13,' ')+'    type')
-            f.close()
-        else:
-            model=self.Model(t,params)
-
-            f=open(name,'w')
-            np.savetxt(f,np.column_stack((t+model,self.epoch,model)),fmt=["%14.7f",'%10.3f',"%+12.10f"]
-                       ,delimiter='    ',header='Obs. Time'.ljust(14,' ')+'    '+'Epoch'.ljust(10,' ')
-                       +'    model O-C')
-            f.close()
+        f=open(name,'w')
+        np.savetxt(f,np.column_stack((t+model,self.epoch,model)),fmt=["%14.7f",'%10.3f',"%+12.10f"]
+                   ,delimiter='    ',header='Obs. Time'.ljust(14,' ')+'    '+'Epoch'.ljust(10,' ')
+                   +'    model O-C')
+        f.close()
 
         self.epoch=old_epoch
 
