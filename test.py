@@ -41,6 +41,8 @@ mpl.show()
 
 tf=TransitFit.TransitFit(t,flux,err)
 tf.params=param
+tf.systemParams={'R':1.2,'R_err':0.1}
+tf.Phase(tf.params['t0'],tf.params['P'])
 tf.Summary()
 
 tf.limits=limits
@@ -50,14 +52,16 @@ tf.fit_params=['Rp','a','i','c1','c2']  #t0,P,Rp,a,i,e,w,c1,c2
 tf.FitGA(100,100)
 tf.Summary()
 
-tf.FitDE(100,100)
-tf.Summary()
+#tf.FitDE(100,100)
+#tf.Summary()
 
 tf.FitMCMC(1e3)
 
 flux1=tf.Model()
 
 tf.Summary()
+
+tf.Save('test')
 
 mpl.errorbar(t*24,flux,yerr=err,fmt='o')
 mpl.plot(t*24,flux0)

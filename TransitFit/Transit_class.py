@@ -47,11 +47,14 @@ from .info_ga import InfoGA as InfoGAClass
 from .info_mc import InfoMC as InfoMCClass
 
 #some constants
-AU=149597870700 #astronomical unit in meters
+au=149597870700 #astronomical unit in meters
 c=299792458     #velocity of light in meters per second
 day=86400.    #number of seconds in day
 minutes=1440. #number of minutes in day
 year=365.2425   #days in year
+rSun=695700000   #radius of Sun in meters
+rJup=69911000     #radius of Jupiter in meters
+rEarth=6371000    #radius of Earth in meters
 
 def GetMax(x,n):
     '''return n max values in array x'''
@@ -1524,14 +1527,14 @@ class TransitFit():
         self.paramsMore={}      #values of parameters calculated from model params
         self.paramsMore_err={}  #errors of calculated parameters
         self.fit_params=[]      #list of fitted parameters
-        self.systemParams={}    #additional parameters of the system (M+errors)
+        self.systemParams={}    #additional parameters of the system (R+errors)
         self._calc_err=False    #errors were calculated
         self._corr_err=False    #errors were corrected
         self._old_err=[]        #given errors
         self.model='Quadratic'  #used model of limb-darkening
-        self._t0P=[]            #linear ephemeris of binary
-        self.epoch=[]           #epoch of binary
-        self.res=[]             #residua = new O-C
+        self._t0P=[]            #linear ephemeris
+        self.phase=[]           #phases
+        self.res=[]             #residua
         self._fit=''            #used algorithm for fitting (GA/DE/MCMC)
         #self._min_type=[]       #type of minima (primary=0 / secondary=1)
         self.availableModels=['Uniform','Linear','Quadratic','SquareRoot','Logarithmic','Exponential','Power2','Nonlinear']   #list of available models
@@ -1579,7 +1582,7 @@ class TransitFit():
         data['fit_params']=self.fit_params
         data['model']=self.model
         data['t0P']=self._t0P
-        data['epoch']=self.epoch
+        data['phase']=self.phase
         #data['min_type']=self._min_type
         data['fit']=self._fit
         data['system']=self.systemParams
@@ -1628,7 +1631,7 @@ class TransitFit():
         self.fit_params=data['fit_params']
         self.model=data['model']
         self._t0P=data['t0P']
-        self.epoch=np.array(data['epoch'])
+        self.phase=np.array(data['phase'])
         #self._min_type=np.array(data['min_type'])
 
         if 'fit' in data: self._fit=data['fit']
@@ -1638,16 +1641,16 @@ class TransitFit():
         if 'system' in data: self.systemParams=data['system']
         else: self.systemParams={}
 
-    def Epoch(self,t0,P,t=None):
-        '''convert time to epoch'''
+    def Phase(self,t0,P,t=None):
+        '''convert time to phase'''
         if t is None: t=self.t
         self._t0P=[t0,P]
 
         E_obs=(t-t0)/P  #observed epoch
-        #f_obs=E_obs-np.round(E_obs)  #observed phase
+        f_obs=E_obs-np.round(E_obs)  #observed phase
 
-        self.epoch=np.round(E_obs)
-        return self.epoch
+        self.phase=f_obs
+        return self.phase
 
     def InfoGA(self,db,eps=False):
         '''statistics about GA or DE fitting'''
@@ -2121,6 +2124,7 @@ class TransitFit():
         err=[]
         for x in sorted(self.params.keys()):
             #names, units, values and errors of model params
+            if x[0]=='c': continue
             params.append(x)
             vals.append(str(self.params[x]))
             if not len(self.params_err)==0:
@@ -2145,28 +2149,32 @@ class TransitFit():
             elif x[0]=='e' or x[0]=='c': unit.append('')
             elif x[0]=='w' or x[0]=='i': unit.append('deg')
 
-        #calculate some more parameters, if not calculated
-        self.MassFun()
-        self.Amplitude()
+        #make blank line
+        params.append('')
+        vals.append('')
+        err.append('')
+        unit.append('')
+        for x in sorted([p for p in self.params.keys() if p[0]=='c']):
+            #names, units, values and errors of model params
+            params.append(x)
+            vals.append(str(self.params[x]))
+            if not len(self.params_err)==0:
+                #errors calculated
+                if x in self.params_err: err.append(str(self.params_err[x]))
+                elif x in self.fit_params: err.append('---')   #errors not calculated
+                else: err.append('fixed')  #fixed params
+            elif x in self.fit_params: err.append('---')  #errors not calculated
+            else: err.append('fixed')   #fixed params
+            #add units
+            unit.append('')
 
-        M=0
-        M_err=0
-        i=90
-        i_err=0
-        if 'M' in self.systemParams:
-            M=self.systemParams['M']
-            if 'M_err' in self.systemParams: M_err=self.systemParams['M_err']
-        elif 'M1' in self.systemParams:
-            M=self.systemParams['M1']
-            if 'M1_err' in self.systemParams: M_err=self.systemParams['M1_err']
-            if 'M2' in self.systemParams:
-                M+=self.systemParams['M2']
-                if 'M2_err' in self.systemParams: M_err+=self.systemParams['M2_err']
-        if 'i3' in self.systemParams:
-            i=self.systemParams['i3']
-            if 'i3_err' in self.systemParams: i_err=self.systemParams['i3_err']
+        R=0
+        R_err=0
+        if 'R' in self.systemParams:
+            R=self.systemParams['R']
+            if 'R_err' in self.systemParams: R_err=self.systemParams['R_err']
 
-        if M>0: self.AbsoluteParam(M,i,M_err,i_err)
+        if R>0: self.AbsoluteParam(R,R_err)
 
         #make blank line
         params.append('')
@@ -2184,34 +2192,15 @@ class TransitFit():
                 else: err.append('---')   #errors not calculated
             else: err.append('---')  #errors not calculated
             #add units
-            if x[0]=='f' or x[0]=='M': unit.append('M_sun')
-            elif x=='dM': unit.append('M_sun/yr')
-            elif x[0]=='a': unit.append('au')
-            elif x[0]=='P' or x[0]=='U':
-                unit.append('d')
+            if x[0]=='a': unit.append('au')
+            elif x[0]=='R':
+                unit.append('RJup')
                 #also in years
                 params.append(x)
-                vals.append(str(self.paramsMore[x]/year))
+                vals.append(str(self.paramsMore[x]*rJup/rEarth))
                 if err[-1]=='---': err.append(err[-1])  #error not calculated
-                else: err.append(str(float(err[-1])/year)) #error calculated
-                unit.append('yr')
-            elif x=='dP':
-                unit.append('d/d')
-                #also in years
-                params.append(x)
-                vals.append(str(self.paramsMore[x]*year))
-                if err[-1]=='---': err.append(err[-1])  #error not calculated
-                else: err.append(str(float(err[-1])*year))  #error not calculated
-                unit.append('d/yr')
-            elif x=='dP/P': unit.append('1/d')
-            elif x[0]=='K':
-                unit.append('s')
-                #also in minutes
-                params.append(x)
-                vals.append(str(self.paramsMore[x]/60.))
-                if err[-1]=='---': err.append(err[-1])  #error not calculated
-                else: err.append(str(float(err[-1])/60.))  #error not calculated
-                unit.append('m')
+                else: err.append(str(float(err[-1])*rJup/rEarth)) #error calculated
+                unit.append('REarth')
 
         #generate text output
         text=['parameter'.ljust(15,' ')+'unit'.ljust(10,' ')+'value'.ljust(30,' ')+'error']
@@ -2246,393 +2235,35 @@ class TransitFit():
     def Amplitude(self):
         '''calculate amplitude of O-C in seconds'''
         output={}
-        if 'LiTE3' in self.model:
-            #LiTE3 and LiTE3Quad models
-            if 'K4' in self.paramsMore:
-                #remove values calculated before
-                del self.paramsMore['K4']
-                if 'K4' in self.paramsMore_err: del self.paramsMore_err['K4']
 
-            self.paramsMore['K3']=self.params['a_sin_i3']*AU/c*np.sqrt(1-self.params['e3']**2*np.cos(self.params['w3'])**2)
-            output['K3']=self.paramsMore['K3']
-            if len(self.params_err)>0:
-                #calculate error of Amplitude
-                #get errors of params of 3rd body
-                if 'e3' in self.params_err: e_err=self.params_err['e3']
-                else: e_err=0
-                if 'a_sin_i3' in self.params_err: a_err=self.params_err['a_sin_i3']*AU
-                else: a_err=0
-                if 'w3' in self.params_err: w_err=self.params_err['w3']
-                else: w_err=0
-                #partial derivations
-                sqrt=np.sqrt(1-self.params['e3']*np.cos(self.params['w3']))
-                da=sqrt/c  #dK3/d(a_sin_i3)
-                de=-self.params['a_sin_i3']*AU*self.params['e3']*np.cos(self.params['w3'])/(c*sqrt) #dK3/de3
-                dw=self.params['a_sin_i3']*AU*self.params['e3']**2*np.sin(self.params['w3'])*np.cos(self.params['w3'])/(c*sqrt) #dK3/dw3
-                self.paramsMore_err['K3']=np.sqrt((da*a_err)**2+(de*e_err)**2+(dw*w_err)**2)
-
-                #if some errors = 0, del them; and return only non-zero errors
-                if self.paramsMore_err['K3']==0: del self.paramsMore_err['K3']
-                else: output['K3_err']=self.paramsMore_err['K3']
-
-
-        if 'LiTE34' in self.model:
-            #LiTE34 and LiTE34Quad models
-            self.paramsMore['K4']=self.params['a_sin_i4']*AU/c*np.sqrt(1-self.params['e4']**2*np.cos(self.params['w4'])**2)
-            output['K4']=self.paramsMore['K4']
-            if len(self.params_err)>0:
-                #calculate error of Amplitude
-                #get errors of params of 4th body
-                if 'e4' in self.params_err: e_err=self.params_err['e4']
-                else: e_err=0
-                if 'a_sin_i4' in self.params_err: a_err=self.params_err['a_sin_i4']*AU
-                else: a_err=0
-                if 'w4' in self.params_err: w_err=self.params_err['w4']
-                else: w_err=0
-                #partial derivations
-                sqrt=np.sqrt(1-self.params['e4']*np.cos(self.params['w4']))
-                da=sqrt/c  #dK4/d(a_sin_i4)
-                de=-self.params['a_sin_i4']*AU*self.params['e4']*np.cos(self.params['w4'])/(c*sqrt) #dK4/de4
-                dw=self.params['a_sin_i4']*AU*self.params['e4']**2*np.sin(self.params['w4'])*np.cos(self.params['w4'])/(c*sqrt) #dK4/dw4
-                self.paramsMore_err['K4']=np.sqrt((da*a_err)**2+(de*e_err)**2+(dw*w_err)**2)
-
-                #if some errors = 0, del them; and return only non-zero errors
-                if self.paramsMore_err['K4']==0: del self.paramsMore_err['K4']
-                else: output['K4_err']=self.paramsMore_err['K4']
-
-
-        if 'ExPlanet' in self.model:
-            #AgolExPlanet and AgolExPlanetLin models
-            if 'K4' in self.paramsMore:
-                #remove values calculated before
-                del self.paramsMore['K4']
-                if 'K4' in self.paramsMore_err: del self.paramsMore_err['K4']
-
-            self.paramsMore['K3']=day*self.params['mu3']/(2*np.pi*(1-self.params['mu3']))*self.params['P']**2/self.params['P3']*\
-                                  (1-self.params['e3']**2)**(-3./2.)*2*(np.arctan(self.params['e3']/(1+np.sqrt(1-self.params['e3']**2)))+self.params['e3'])
-
-            output['K3']=self.paramsMore['K3']
-            if len(self.params_err)>0:
-                #calculate error of Amplitude
-                #get errors of params of 3rd body
-                if 'e3' in self.params_err: e_err=self.params_err['e3']
-                else: e_err=0
-                if 'P3' in self.params_err: P3_err=self.params_err['P3']*day
-                else: P3_err=0
-                if 'mu3' in self.params_err: mu_err=self.params_err['mu3']
-                else: mu_err=0
-                if 'P' in self.params_err: P_err=self.params_err['P']*day
-                else: P_err=0
-                #partial derivations
-                K=self.paramsMore['K3']
-                dmu=K/(1-self.params['mu3'])  #dK3/dmu3
-                dP=2*K/self.params['P']/day   #dK3/dP
-                dP3=-K/self.params['P3']/day   #dK3/dP3
-                e=self.params['e3']
-                de=day*self.params['mu3']/(2*np.pi*(1-self.params['mu3']))*self.params['P']**2/self.params['P3']*\
-                   ((4*np.sqrt(1-e**2))*e**2+2*np.sqrt(1-e**2)+6*np.sqrt(1-e**2)*e*np.arctan(e/(np.sqrt(1-e**2)+1))+1)/(e**2-1)**3           #dK3/de3
-                self.paramsMore_err['K3']=np.sqrt((dmu*mu_err)**2+(dP*P_err)**2+(dP3*P3_err)**2+(de*e_err)**2)
-
-                #if some errors = 0, del them; and return only non-zero errors
-                if self.paramsMore_err['K3']==0: del self.paramsMore_err['K3']
-                else: output['K3_err']=self.paramsMore_err['K3']
-
-
-        if 'InPlanet' in self.model:
-            #AgolInPlanet and AgolInPlanetLin models
-            if 'K4' in self.paramsMore:
-                #remove values calculated before
-                del self.paramsMore['K4']
-                if 'K4' in self.paramsMore_err: del self.paramsMore_err['K4']
-
-            self.paramsMore['K3']=day*self.params['P']*self.params['mu3']*self.params['r3']*np.sqrt(1-self.params['e']**2)/\
-                                  (2*np.pi*self.params['a']*(1-self.params['e']*np.sin(self.params['w'])))
-
-            output['K3']=self.paramsMore['K3']
-            if len(self.params_err)>0:
-                #calculate error of Amplitude
-                #get errors of params of 3rd body
-                if 'e' in self.params_err: e_err=self.params_err['e']
-                else: e_err=0
-                if 'mu3' in self.params_err: mu_err=self.params_err['mu3']
-                else: mu_err=0
-                if 'P' in self.params_err: P_err=self.params_err['P']*day
-                else: P_err=0
-                if 'r3' in self.params_err: r_err=self.params_err['r3']*AU
-                else: r_err=0
-                if 'a' in self.params_err: a_err=self.params_err['a']*AU
-                else: a_err=0
-                if 'w' in self.params_err: w_err=self.params_err['w']
-                else: w_err=0
-                #partial derivations
-                K=self.paramsMore['K3']
-                dmu=K/self.params['mu3']  #dK3/dmu3
-                dP=K/self.params['P']/day   #dK3/dP
-                dr=K/self.params['r3']/AU   #dK3/dr3
-                da=K/self.params['a']/AU   #dK3/da
-                e=self.params['e']
-                w=self.params['w']
-                de=-K*np.sqrt(1+e)*(e-np.sin(w))/(1-e*np.sin(w))          #dK3/de
-                dw=K*e*np.cos(w)/(1-e*np.sin(w))          #dK3/dw
-                self.paramsMore_err['K3']=np.sqrt((dmu*mu_err)**2+(dP*P_err)**2+(dr*r_err)**2
-                                                  +(de*e_err)**2+(da*a_err)**2+(dw*w_err)**2)
-
-                #if some errors = 0, del them; and return only non-zero errors
-                if self.paramsMore_err['K3']==0: del self.paramsMore_err['K3']
-                else: output['K3_err']=self.paramsMore_err['K3']
-
-        if 'Apsid' in self.model:
-            #Apsidal motion
-            if 'K4' in self.paramsMore:
-                #remove values calculated before
-                del self.paramsMore['K4']
-                if 'K4' in self.paramsMore_err: del self.paramsMore_err['K4']
-            self.paramsMore['K3']=day*self.params['P']*self.params['e']/np.pi
-
-            output['K3']=self.paramsMore['K3']
-            if len(self.params_err)>0:
-                #calculate error of Amplitude
-                #get errors of params of 3rd body
-                if 'e' in self.params_err: e_err=self.params_err['e']
-                else: e_err=0
-                if 'P' in self.params_err: P_err=self.params_err['P']
-                else: P_err=0
-                self.paramsMore_err['K3']=self.paramsMore['K3']*np.sqrt((P_err/self.params['P'])**2+\
-                                          (e_err/self.params['e'])**2)
-
-                #if some errors = 0, del them; and return only non-zero errors
-                if self.paramsMore_err['K3']==0: del self.paramsMore_err['K3']
-                else: output['K3_err']=self.paramsMore_err['K3']
 
         return output
 
-    def ParamsApsidal(self):
-        '''calculate some params for model of apsidal motion'''
+    def AbsoluteParam(self,R,R_err=0):
+        '''calculate absolute radius and semi-mayor axis of planet from radius of star'''
         output={}
-        if not 'Apsidal' in self.model: return output
-        self.paramsMore['Ps']=self.params['P']*(1-self.params['dw']/(2*np.pi))
-        self.paramsMore['U']=self.paramsMore['Ps']*2*np.pi/self.params['dw']
-        output['Ps']=self.paramsMore['Ps']
-        output['U']=self.paramsMore['U']
+        self.paramsMore['a']=self.params['a']*R*rSun/au
+        self.paramsMore['Rp']=self.params['Rp']*R*rSun/rJup
+        output['a']=self.paramsMore['a']
+        output['Rp']=self.paramsMore['Rp']
 
         if len(self.params_err)>0:
-            #calculate error of params
-            #get errors of params of model
-            if 'P' in self.params_err: P_err=self.params_err['P']
-            else: P_err=0
-            if 'dw' in self.params_err: dw_err=self.params_err['dw']
-            else: dw_err=0
+            #get error of params
+            if 'a' in self.params_err: a_err=self.params_err['a']
+            else: a_err=0
+            if 'Rp' in self.params_err: r_err=self.params_err['Rp']
+            else: r_err=0
 
-            self.paramsMore_err['Ps']=np.sqrt((1-self.params['dw']/(2*np.pi))**2*P_err**2+\
-                                      (self.params['P']/(2*np.pi)*dw_err)**2)
-            self.paramsMore_err['U']=self.paramsMore['U']*np.sqrt((P_err/self.params['P'])**2+\
-                                      (dw_err/self.params['dw'])**2)
+            #calculate errors of params
+            self.paramsMore_err['a']=self.paramsMore['a']*(a_err/self.params['a']+R_err/R)
+            self.paramsMore_err['Rp']=self.paramsMore['Rp']*(r_err/self.params['Rp']+R_err/R)
 
             #if some errors = 0, del them; and return only non-zero errors
-            if self.paramsMore_err['Ps']==0: del self.paramsMore_err['Ps']
-            else: output['Ps_err']=self.paramsMore_err['Ps']
-            if self.paramsMore_err['U']==0: del self.paramsMore_err['U']
-            else: output['U_err']=self.paramsMore_err['U']
-        return output
+            if self.paramsMore_err['a']==0: del self.paramsMore_err['a']
+            else: output['a_err']=self.paramsMore_err['a']
+            if self.paramsMore_err['Rp']==0: del self.paramsMore_err['Rp']
+            else: output['Rp_err']=self.paramsMore_err['Rp']
 
-    def MassFun(self):
-        '''calculate Mass Function for LiTE models'''
-        output={}
-        if 'LiTE3' in self.model:
-            #LiTE3 and LiTE3Quad models
-            if 'f_m4' in self.paramsMore:
-                #remove values calculated before
-                del self.paramsMore['f_m4']
-                if 'f_m4' in self.paramsMore_err: del self.paramsMore_err['f_m4']
-
-            self.paramsMore['f_m3']=self.params['a_sin_i3']**3/(self.params['P3']/365.2425)**2
-            output['f_m3']=self.paramsMore['f_m3']
-            if len(self.params_err)>0:
-                #calculate error of Mass Function
-                #get errors of params of 3rd body
-                if 'P3' in self.params_err: P3_err=self.params_err['P3']
-                else: P3_err=0
-                if 'a_sin_i3' in self.params_err: a_err=self.params_err['a_sin_i3']
-                else: a_err=0
-                self.paramsMore_err['f_m3']=self.paramsMore['f_m3']*np.sqrt(9*(a_err/self.params['a_sin_i3'])**2+\
-                                             4*(P3_err/self.params['P3'])**2)
-                #if some errors = 0, del them; and return only non-zero errors
-                if self.paramsMore_err['f_m3']==0: del self.paramsMore_err['f_m3']
-                else: output['f_m3_err']=self.paramsMore_err['f_m3']
-
-
-        if 'LiTE34' in self.model:
-            #LiTE34 and LiTE34Quad models
-            self.paramsMore['f_m4']=self.params['a_sin_i4']**3/(self.params['P4']/365.2425)**2
-            output['f_m4']=self.paramsMore['f_m4']
-            if len(self.params_err)>0:
-                #calculate error of Mass Function
-                #get errors of params of 4th body
-                if 'P4' in self.params_err: P4_err=self.params_err['P4']
-                else: P4_err=0
-                if 'a_sin_i4' in self.params_err: a_err=self.params_err['a_sin_i4']
-                else: a_err=0
-                self.paramsMore_err['f_m4']=self.paramsMore['f_m4']*np.sqrt(9*(a_err/self.params['a_sin_i4'])**2+\
-                                            4*(P4_err/self.params['P4'])**2)
-
-                #if some errors = 0, del them; and return only non-zero errors
-                if self.paramsMore_err['f_m4']==0: del self.paramsMore_err['f_m4']
-                else: output['f_m4_err']=self.paramsMore_err['f_m4']
-        return output
-
-
-
-    def AbsoluteParam(self,M,i=90,M_err=0,i_err=0):
-        '''calculate mass and semi-mayor axis of 3rd body from mass of binary and inclination'''
-        self.MassFun()
-        output={}
-        if 'LiTE3' in self.model:
-            #LiTE3 and LiTE3Quad models
-            self.paramsMore['a12']=self.params['a_sin_i3']/np.sin(np.deg2rad(i))
-            f=self.paramsMore['f_m3']/np.sin(np.deg2rad(i))**3   #Mass function of 3rd body/sin(i)**3
-            root=(2*f**3+18*f**2*M+3*np.sqrt(3)*np.sqrt(4*f**3*M**3+27*f**2*M**4)+27*f*M**2)**(1./3.)
-            self.paramsMore['M3']=root/(3.*2.**(1./3.))-2.**(1./3.)*(-f**2-6.*f*M)/(3.*root)+f/3.
-            self.paramsMore['a3']=self.paramsMore['a12']*M/self.paramsMore['M3']
-            self.paramsMore['a']=self.paramsMore['a12']+self.paramsMore['a3']
-            self.paramsMore['M3_sin_i3']=self.paramsMore['M3']*np.sin(np.deg2rad(i))
-
-            output['M3']=self.paramsMore['M3']
-            output['M3_sin_i3']=self.paramsMore['M3_sin_i3']
-            output['a12']=self.paramsMore['a12']
-            output['a3']=self.paramsMore['a3']
-            output['a']=self.paramsMore['a']
-            if len(self.params_err)>0:
-                #calculate error of params
-                #get errors of params of 3rd body
-                if 'a_sin_i3' in self.params_err: a_err=self.params_err['a_sin_i3']
-                else: a_err=0
-                if 'f_m3' in self.paramsMore_err: f3_err=self.paramsMore_err['f_m3']
-                else: f3_err=0
-                f_err=f*np.sqrt((f3_err/self.paramsMore['f_m3'])**2+9*(np.deg2rad(i_err)/np.tan(np.deg2rad(i)))**2)
-
-                #some strange partial derivations... (calculated using Wolfram Mathematica)
-                #dM3/dM
-                dM=-((2**(1/3.)*(f**2+6*f*M)*(54*f*M+(3*np.sqrt(3)*(8*f**3*M+108*f**2*M**3))/(2*np.sqrt(4*f**3*M**2+27*f**2*M**4))))/(9*(18*f**2+2*f**3+27*f*M**2+3*np.sqrt(3)*np.sqrt(4*f**3*M**2+\
-                    27*f**2*M**4))**(4/3.)))+(54*f*M+(3*np.sqrt(3)*(8*f**3*M+108*f**2*M**3))/(2*np.sqrt(4*f**3*M**2+27*f**2*M**4)))/(9*2**(1/3.)*(18*f**2+2*f**3+27*f*M**2+3*np.sqrt(3)*np.sqrt(4*f**3*\
-                    M**2+27*f**2*M**4))**(2/3.))+(2*2**(1/3.)*f)/(18*f**2+2*f**3+27*f*M**2+3*np.sqrt(3)*np.sqrt(4*f**3*M**2+27*f**2*M**4))**(1/3.)
-
-                #dM3/df
-                df=1/3.-(2**(1/3.)*(f**2+6*f*M)*(36*f+6*f**2+27*M**2+(3*np.sqrt(3)*(12*f**2*M**2+54*f*M**4))/(2*np.sqrt(4*f**3*M**2+27*f**2*M**4))))/(9*(18*f**2+2*f**3+27*f*M**2+3*np.sqrt(3)*\
-                    np.sqrt(4*f**3*M**2+27*f**2*M**4))**(4/3.))+(36*f+6*f**2+27*M**2+(3*np.sqrt(3)*(12*f**2*M**2+54*f*M**4))/(2*np.sqrt(4*f**3*M**2+27*f**2*M**4)))/(9*2**(1/3.)*(18*f**2+2*f**3+\
-                    27*f*M**2+3*np.sqrt(3)*np.sqrt(4*f**3*M**2+27*f**2*M**4))**(2/3.))+(2**(1/3.)*(2*f+6*M))/(3*(18*f**2+2*f**3+27*f*M**2+3*np.sqrt(3)*np.sqrt(4*f**3*M**2+27*f**2*M**4))**(1/3.))
-
-                #calculate errors of params
-                self.paramsMore_err['a12']=self.paramsMore['a12']*np.sqrt((a_err/self.params['a_sin_i3'])**2+(np.deg2rad(i_err)/np.tan(np.deg2rad(i)))**2)
-                self.paramsMore_err['M3']=np.sqrt((dM*M_err)**2+(df*f_err)**2)
-                self.paramsMore_err['M3_sin_i3']=np.sqrt((dM*M_err)**2+(df*self.paramsMore['f_m3']*np.sqrt((f3_err/self.paramsMore['f_m3'])**2))**2)
-                self.paramsMore_err['a3']=self.paramsMore['a3']*np.sqrt((self.paramsMore_err['a12']/self.paramsMore['a12'])**2+\
-                                        (M_err/M)**2+(self.paramsMore_err['M3']/self.paramsMore['M3'])**2)
-                self.paramsMore_err['a']=self.paramsMore_err['a12']+self.paramsMore_err['a3']
-
-                #if some errors = 0, del them; and return only non-zero errors
-                if self.paramsMore_err['M3']==0: del self.paramsMore_err['M3']
-                else: output['M3_err']=self.paramsMore_err['M3']
-                if self.paramsMore_err['M3_sin_i3']==0: del self.paramsMore_err['M3_sin_i3']
-                else: output['M3_sin_i3_err']=self.paramsMore_err['M3_sin_i3']
-                if self.paramsMore_err['a12']==0: del self.paramsMore_err['a12']
-                else: output['a12_err']=self.paramsMore_err['a12']
-                if self.paramsMore_err['a3']==0: del self.paramsMore_err['a3']
-                else: output['a3_err']=self.paramsMore_err['a3']
-                if self.paramsMore_err['a']==0: del self.paramsMore_err['a']
-                else: output['a_err']=self.paramsMore_err['a']
-
-
-        if 'LiTE34' in self.model:
-            #Lite34 a Lite34Quad models
-            self.paramsMore['a12-3']=self.paramsMore['a']
-            output['a12-3']=self.paramsMore['a']
-            if 'a' in self.paramsMore_err:
-                self.paramsMore_err['a12-3']=self.paramsMore_err['a']
-                output['a_err']=self.paramsMore_err['a']
-
-            self.paramsMore['a123']=self.params['a_sin_i4']/np.sin(np.deg2rad(i))
-            f=self.paramsMore['f_m4']/np.sin(np.deg2rad(i))**3   #Mass function of 4th body/sin(i)**3
-
-            root=(2*f**3+18*f**2*M+3*np.sqrt(3)*np.sqrt(4*f**3*M**3+27*f**2*M**4)+27*f*M**2)**(1./3.)
-            self.paramsMore['M4']=root/(3*2**(1./3.))-2**(1./3.)*(-f**2-6*f*M)/(3*root)+f/3.
-            self.paramsMore['a4']=self.paramsMore['a12']*M/self.paramsMore['M4']
-            self.paramsMore['a']=self.paramsMore['a12']+self.paramsMore['a4']
-            self.paramsMore['M4_sin_i4']=self.paramsMore['M4']*np.sin(np.deg2rad(i))
-
-            output['M4']=self.paramsMore['M4']
-            output['M4_sin_i4']=self.paramsMore['M4_sin_i4']
-            output['a123']=self.paramsMore['a123']
-            output['a4']=self.paramsMore['a4']
-            output['a']=self.paramsMore['a']
-            if len(self.params_err)>0:
-                #calculate error of params
-                #get errors of params of 3rd body
-                if 'a_sin_i4' in self.params_err: a_err=self.params_err['a_sin_i4']
-                else: a_err=0
-                if 'f_m4' in self.paramsMore_err: f4_err=self.paramsMore_err['f_m4']
-                else: f4_err=0
-                f_err=f*np.sqrt((f4_err/self.paramsMore['f_m4'])**2+9*(np.deg2rad(i_err)/np.tan(np.deg2rad(i)))**2)
-
-                #some strange partial derivations... (calculated using Derive6)
-                #dM4/dM
-                #some strange partial derivations... (calculated using Wolfram Mathematica)
-                #dM3/dM
-                dM=-((2**(1/3.)*(f**2+6*f*M)*(54*f*M+(3*np.sqrt(3)*(8*f**3*M+108*f**2*M**3))/(2*np.sqrt(4*f**3*M**2+27*f**2*M**4))))/(9*(18*f**2+2*f**3+27*f*M**2+3*np.sqrt(3)*np.sqrt(4*f**3*M**2+\
-                    27*f**2*M**4))**(4/3.)))+(54*f*M+(3*np.sqrt(3)*(8*f**3*M+108*f**2*M**3))/(2*np.sqrt(4*f**3*M**2+27*f**2*M**4)))/(9*2**(1/3.)*(18*f**2+2*f**3+27*f*M**2+3*np.sqrt(3)*np.sqrt(4*f**3*\
-                    M**2+27*f**2*M**4))**(2/3.))+(2*2**(1/3.)*f)/(18*f**2+2*f**3+27*f*M**2+3*np.sqrt(3)*np.sqrt(4*f**3*M**2+27*f**2*M**4))**(1/3.)
-
-                #dM3/df
-                df=1/3.-(2**(1/3.)*(f**2+6*f*M)*(36*f+6*f**2+27*M**2+(3*np.sqrt(3)*(12*f**2*M**2+54*f*M**4))/(2*np.sqrt(4*f**3*M**2+27*f**2*M**4))))/(9*(18*f**2+2*f**3+27*f*M**2+3*np.sqrt(3)*\
-                    np.sqrt(4*f**3*M**2+27*f**2*M**4))**(4/3.))+(36*f+6*f**2+27*M**2+(3*np.sqrt(3)*(12*f**2*M**2+54*f*M**4))/(2*np.sqrt(4*f**3*M**2+27*f**2*M**4)))/(9*2**(1/3.)*(18*f**2+2*f**3+\
-                    27*f*M**2+3*np.sqrt(3)*np.sqrt(4*f**3*M**2+27*f**2*M**4))**(2/3.))+(2**(1/3.)*(2*f+6*M))/(3*(18*f**2+2*f**3+27*f*M**2+3*np.sqrt(3)*np.sqrt(4*f**3*M**2+27*f**2*M**4))**(1/3.))
-
-                #calculate errors of params
-                self.paramsMore_err['a123']=self.paramsMore['a123']*np.sqrt((a_err/self.params['a_sin_i4'])**2+(np.deg2rad(i_err)/np.tan(np.deg2rad(i)))**2)
-                self.paramsMore_err['M4']=np.sqrt((dM*M_err)**2+(df*f_err)**2)
-                self.paramsMore_err['M4_sin_i4']=np.sqrt((dM*M_err)**2+(df*self.paramsMore['f_m4']*np.sqrt((f4_err/self.paramsMore['f_m4'])**2))**2)
-                self.paramsMore_err['a4']=self.paramsMore['a4']*np.sqrt((self.paramsMore_err['a123']/self.paramsMore['a123'])**2+\
-                                        (M_err/M)**2+(self.paramsMore_err['M4']/self.paramsMore['M4'])**2)
-                self.paramsMore_err['a']=self.paramsMore_err['a123']+self.paramsMore_err['a4']
-
-                #if some errors = 0, del them; and return only non-zero errors
-                if self.paramsMore_err['M4']==0: del self.paramsMore_err['M4']
-                else: output['M4_err']=self.paramsMore_err['M4']
-                if self.paramsMore_err['M4_sin_i4']==0: del self.paramsMore_err['M4_sin_i4']
-                else: output['M4_sin_i4_err']=self.paramsMore_err['M4_sin_i4']
-                if self.paramsMore_err['a123']==0: del self.paramsMore_err['a123']
-                else: output['a123_err']=self.paramsMore_err['a123']
-                if self.paramsMore_err['a4']==0: del self.paramsMore_err['a4']
-                else: output['a4_err']=self.paramsMore_err['a4']
-                if self.paramsMore_err['a']==0: del self.paramsMore_err['a']
-                else: output['a_err']=self.paramsMore_err['a']
-
-
-        if 'Agol' in self.model:
-            #AgolInPlanet, AgolInPlanetLin, AgolExPlanet, AgolExPlanetLin
-            self.paramsMore['M3']=M*self.params['mu3']/(1-self.params['mu3'])
-            self.paramsMore['a']=((self.params['P3']/365.2425)**2*(M+self.paramsMore['M3']))**(1./3.)
-
-            output['M3']=self.paramsMore['M3']
-            output['a']=self.paramsMore['a']
-            if len(self.params_err)>0:
-                #calculate error of params
-                #get errors of params of 3rd body
-                if 'mu3' in self.params_err: mu3_err=self.params_err['mu3']
-                else: mu3_err=0
-                if 'P3' in self.params_err: P3_err=self.params_err['P3']
-                else: P3_err=0
-
-                #calculate error of params
-                self.paramsMore_err['M3']=self.paramsMore['M3']*np.sqrt((M_err/M)**2+\
-                                    (mu3_err/(self.params['mu3']*(1-self.params['mu3'])))**2)
-                self.paramsMore_err['a']=self.paramsMore['a']/3.*np.sqrt(((M_err+self.paramsMore_err['M3'])/\
-                                    (M+self.paramsMore['M3']))**2+(2*P3_err/self.params['P3'])**2)
-
-                #if some errors = 0, del them; and return only non-zero errors
-                if self.paramsMore_err['M3']==0: del self.paramsMore_err['M3']
-                else: output['M3_err']=self.paramsMore_err['M3']
-                if self.paramsMore_err['a']==0: del self.paramsMore_err['a']
-                else: output['a_err']=self.paramsMore_err['a']
         return output
 
 
