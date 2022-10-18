@@ -37,8 +37,6 @@ from scipy.optimize._differentialevolution import DifferentialEvolutionSolver
 try: import emcee
 except ModuleNotFoundError: warnings.warn('Module emcee not found! Using FitMC will not be possible!')
 
-try: import pymc
-except ModuleNotFoundError: warnings.warn('Module pymc not found! Using FitMC_old will not be possible!')
 
 import batman
 
@@ -1675,7 +1673,7 @@ class TransitFit():
 
         for p in info.pars: info.OneParam(p,eps)
 
-    def Batman(self,t,t0,P,Rp,a,i,e,w,u):
+    def Transit(self,t,t0,P,Rp,a,i,e,w,u):
         '''model of transit from batman package
         t - times of observations (np.array alebo float) [days]
         t0 - time of reference transit [days]
@@ -2028,94 +2026,6 @@ class TransitFit():
 
         return self.params,self.params_err
 
-    def FitMCMC_old(self,n_iter,burn=0,binn=1,visible=True,db=None):
-        '''fitting with Markov chain Monte Carlo using pymc
-        n_iter - number of MC iteration - should be at least 1e5
-        burn - number of removed steps before equilibrium - should be approx. 0.1-1% of n_iter
-        binn - binning size - should be around 10
-        visible - display status of fitting
-        db - name of database to save MCMC fitting details (could be analysed later using InfoMCMC function)
-        '''
-
-        #setting pymc sampling for fitted parameters
-        pars={}
-        for p in self.fit_params:
-            pars[p]=pymc.Uniform(p,lower=self.limits[p][0],upper=self.limits[p][1],value=self.params[p])
-
-        def model_fun(**vals):
-            '''model function for pymc'''
-            param=dict(vals)
-            for x in self.params:
-                #add fixed parameters
-                if x not in param: param[x]=self.params[x]
-            return self.Model(param=param)
-
-        #definition of pymc model
-        model=pymc.Deterministic(
-            eval=model_fun,
-            doc='model',
-            name='Model',
-            parents=pars,
-            trace=True,
-            plot=False)
-
-        #final distribution
-        if self._set_err or self._calc_err:
-            #if known errors of data -> normal/Gaussian distribution
-            y=pymc.Normal('y',mu=model,tau=1./self.err**2,value=self.flux,observed=True)
-        else:
-            #if unknown errors of data -> Poisson distribution
-            #note: should cause wrong performance of fitting, rather use function CalcErr for obtained errors
-            y=pymc.Poisson('y',mu=model,value=self.flux,observed=True)
-
-        #adding final distribution and sampling of parameters to model
-        Model=[y]
-        for v in pars.values():
-            Model.append(v)
-
-        #create pymc object
-        if db is None: R=pymc.MCMC(Model)
-        else:
-            #saving MCMC fitting details
-            path=db.replace('\\','/')   #change dirs in path (for Windows)
-            if path.rfind('/')>0:
-                path=path[:path.rfind('/')+1]  #find current dir of db file
-                if not os.path.isdir(path): os.mkdir(path) #create dir of db file, if not exist
-            R=pymc.MCMC(Model,db='pickle',dbname=db)
-
-        #setting pymc method - distribution and steps
-        for p in pars:
-            R.use_step_method(pymc.Metropolis,pars[p],proposal_sd=self.steps[p],
-                              proposal_distribution='Normal')
-
-        if not visible:
-            #hidden output
-            f = open(os.devnull, 'w')
-            out=sys.stdout
-            sys.stdout=f
-
-        R.sample(iter=n_iter,burn=burn,thin=binn)  #MCMC fitting/simulation
-
-        self.params_err={} #remove errors of parameters
-        #remove some values calculated from old parameters
-        self.paramsMore={}
-        self.paramsMore_err={}
-
-        for p in pars:
-            #calculate values and errors of parameters and save them
-            self.params[p]=np.mean(pars[p].trace())
-            self.params_err[p]=np.std(pars[p].trace())
-
-
-        if not visible:
-            #hidden output
-            sys.stdout=out
-            f.close()
-        self._fit='MCMC_old'
-
-        return self.params,self.params_err
-
-
     def Summary(self,name=None):
         '''summary of parameters, output to file "name"'''
         params=[]
@@ -2144,7 +2054,6 @@ class TransitFit():
                 if err[-1]=='---' or err[-1]=='fixed': err.append(err[-1])  #error not calculated
                 else: err.append(str(float(err[-1])/year)) #error calculated
                 unit.append('yr')
-            elif x[0]=='Q': unit.append('d')
             elif x[0]=='t': unit.append('JD')
             elif x[0]=='e' or x[0]=='c': unit.append('')
             elif x[0]=='w' or x[0]=='i': unit.append('deg')
@@ -2168,6 +2077,8 @@ class TransitFit():
             #add units
             unit.append('')
 
+        #calculate some more parameters, if not calculated
+        self.DepthDur()
         R=0
         R_err=0
         if 'R' in self.systemParams:
@@ -2193,6 +2104,10 @@ class TransitFit():
             else: err.append('---')  #errors not calculated
             #add units
             if x[0]=='a': unit.append('au')
+            elif x[0]=='d':
+                unit.append('%')
+                vals[-1]=str(float(vals[-1])*100)
+                if not err[-1]=='---': err[-1]=str(float(err[-1])*100)
             elif x[0]=='R':
                 unit.append('RJup')
                 #also in years
@@ -2201,6 +2116,14 @@ class TransitFit():
                 if err[-1]=='---': err.append(err[-1])  #error not calculated
                 else: err.append(str(float(err[-1])*rJup/rEarth)) #error calculated
                 unit.append('REarth')
+            elif x[0]=='T':
+                unit.append('d')
+                #also in years
+                params.append(x)
+                vals.append(str(self.paramsMore[x]*24))
+                if err[-1]=='---': err.append(err[-1])  #error not calculated
+                else: err.append(str(float(err[-1])*24)) #error calculated
+                unit.append('h')
 
         #generate text output
         text=['parameter'.ljust(15,' ')+'unit'.ljust(10,' ')+'value'.ljust(30,' ')+'error']
@@ -2232,10 +2155,81 @@ class TransitFit():
             f.close()
 
 
-    def Amplitude(self):
-        '''calculate amplitude of O-C in seconds'''
+    def DepthDur(self):
+        '''calculate depth and duration of transit'''
         output={}
+        self.paramsMore['delta']=self.params['Rp']**2
+        output['delta']=self.paramsMore['delta']
 
+        i=np.deg2rad(self.params['i'])
+        e=self.params['e']
+        a=self.params['a']
+        w=np.deg2rad(self.params['w'])
+        ee=(1-e**2)/(1+e*np.cos(w))
+        t14=self.params['P']/np.pi*np.arcsin(np.sqrt((1+self.params['Rp'])**2-(a*np.cos(i)*ee)**2)/(a*np.sin(i))*ee)
+        t23=self.params['P']/np.pi*np.arcsin(np.sqrt((1-self.params['Rp'])**2-(a*np.cos(i)*ee)**2)/(a*np.sin(i))*ee)
+
+        self.paramsMore['T14']=t14
+        self.paramsMore['T23']=t23
+        output['T14']=self.paramsMore['T14']
+        output['T23']=self.paramsMore['T23']
+
+        if len(self.params_err)>0:
+            #get error of params
+            if 'Rp' in self.params_err: r_err=self.params_err['Rp']
+            else: r_err=0
+            if 'a' in self.params_err: a_err=self.params_err['a']
+            else: a_err=0
+            if 'i' in self.params_err: i_err=np.deg2rad(self.params_err['i'])
+            else: i_err=0
+            if 'e' in self.params_err: e_err=self.params_err['e']
+            else: e_err=0
+            if 'w' in self.params_err: w_err=np.deg2rad(self.params_err['w'])
+            else: w_err=0
+            if 'P' in self.params_err: P_err=self.params_err['P']
+            else: P_err=0
+
+            #calculate errors of params
+            self.paramsMore_err['delta']=self.paramsMore['delta']*(2*r_err/self.params['Rp'])
+
+            def errT(dur14=True):
+                '''calculate errors of durations T14 and T23'''
+                #x=1+-self.params['Rp']
+                #some strange partial derivations...(calculated using Wolfram Mathematica)
+                if dur14:
+                    x=1+self.params['Rp']
+                    T=t14
+                else:
+                    x=1-self.params['Rp']
+                    T=t23
+
+                #dT/dx = dT/d(1+-R)
+                dR=self.params['P']/np.pi*(1-e**2)*x/np.sin(i)/((a*e*np.cos(w)+a)*np.sqrt(x**2-(a**2*(1-e**2)**2* np.cos(i)**2)/(e*np.cos(w)+1)**2)*np.sqrt(1-((e**2-1)**2/np.sin(i)**2*(x**2-(a**2*(e**2-1)**2*np.cos(i)**2)/(e*np.cos(w)+1)**2))/(a*e*np.cos(w)+a)**2))
+
+                #dT/da
+                da=self.params['P']/np.pi*(1-e**2)*x**2/np.sin(i)/(a**2*(e*np.cos(w)+1)*np.sqrt(x**2-((e**2- 1)**2*a**2*np.cos(i)**2)/(e*np.cos(w)+1)**2)*np.sqrt(1-((e**2-1)**2/np.sin(i)**2*(x**2-((e**2-1)**2*a**2*np.cos(i)**2)/(e*np.cos(w)+1)**2))/(e*a*np.cos(w)+a)**2))
+
+                #dT/dw
+                dw=self.params['P']/np.pi*(e*(1-e**2)*np.sin(w)*(2*a**2*(e**2-1)**2*np.cos(i)**2/np.sin(i)-1/np.sin(i)*(e*x*np.cos(w)+x)**2))/(a*(e*np.cos(w)+1)**4*np.sqrt(x**2-(a**2*(e**2-1)**2*np.cos(i)**2)/(e*np.cos(w)+1)**2)*np.sqrt(1-((e**2-1)**2/np.sin(i)**2*(x**2-(a**2*(e**2-1)**2*np.cos(i)**2)/(e*np.cos(w)+1)**2))/(a*e*np.cos(w)+a)**2))
+
+                #dT/di
+                di=self.params['P']/np.pi*((1-e**2)*(a**2*(e**2-1)**2*np.cos(i)*(1/np.sin(i)**2+1)-np.cos(i)/np.sin(i)**2*(e*x*np.cos(w)+x)**2))/(a*(e*np.cos(w)+1)**3*np.sqrt(x**2-(a**2*(e**2-1)**2*np.cos(i)**2)/(e*np.cos(w)+1)**2)*np.sqrt(1-((e**2-1)**2/np.sin(i)**2*(x**2-(a**2*(e**2-1)**2*np.cos(i)**2)/(e*np.cos(w)+1)**2))/(a*e*np.cos(w)+a)**2))
+
+                #dT/de
+                de=self.params['P']/np.pi*(((e**2+1)*np.cos(w)+2*e)/np.sin(i)*(2*a**2*(1-e**2)**2*np.cos(i)**2+x**2*(-e**2)*np.cos(w)**2-2*x**2*e*np.cos(w)-x**2))/(a*(e*np.cos(w)+1)**4*np.sqrt(x**2-(a**2*(1-e**2)**2*np.cos(i)**2)/(e*np.cos(w)+1)**2)*np.sqrt(1-((1-e**2)**2/np.sin(i)**2*(x**2-(a**2*(1-e**2)**2*np.cos(i)**2)/(e*np.cos(w)+1)**2))/(a*e*np.cos(w)+a)**2))
+
+                err=np.sqrt((T/self.params['P']*P_err)**2+(dR*r_err)**2+(da*a_err)**2+(di*i_err)**2+(de*e_err)**2+(dw*w_err)**2)
+                return err
+
+            self.paramsMore_err['T14']=errT(dur14=True)
+            self.paramsMore_err['T23']=errT(dur14=False)
+            #if some errors = 0, del them; and return only non-zero errors
+            if self.paramsMore_err['delta']==0: del self.paramsMore_err['delta']
+            else: output['delta_err']=self.paramsMore_err['delta']
+            if self.paramsMore_err['T14']==0: del self.paramsMore_err['T14']
+            else: output['T14_err']=self.paramsMore_err['T14']
+            if self.paramsMore_err['T23']==0: del self.paramsMore_err['T23']
+            else: output['T23_err']=self.paramsMore_err['T23']
 
         return output
 
@@ -2278,7 +2272,7 @@ class TransitFit():
             u.append(param['c3'])
             u.append(param['c4'])
 
-        model=self.Batman(t,param['t0'],param['P'],param['Rp'],param['a'],param['i'],param['e'],param['w'],u)
+        model=self.Transit(t,param['t0'],param['P'],param['Rp'],param['a'],param['i'],param['e'],param['w'],u)
         return model
 
 

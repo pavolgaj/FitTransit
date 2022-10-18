@@ -47,7 +47,7 @@ tf.Summary()
 
 tf.limits=limits
 tf.steps=steps
-tf.fit_params=['Rp','a','i','c1','c2']  #t0,P,Rp,a,i,e,w,c1,c2
+tf.fit_params=['Rp','a','i','c1','c2','e','w']  #t0,P,Rp,a,i,e,w,c1,c2
 
 tf.FitGA(100,100)
 tf.Summary()
@@ -61,7 +61,7 @@ flux1=tf.Model()
 
 tf.Summary()
 
-tf.Save('test')
+#tf.Save('test')
 
 mpl.errorbar(t*24,flux,yerr=err,fmt='o')
 mpl.plot(t*24,flux0)
