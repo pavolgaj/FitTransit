@@ -1534,7 +1534,6 @@ class TransitFit():
         self.phase=[]           #phases
         self.res=[]             #residua
         self._fit=''            #used algorithm for fitting (GA/DE/MCMC)
-        #self._min_type=[]       #type of minima (primary=0 / secondary=1)
         self.availableModels=['Uniform','Linear','Quadratic','SquareRoot','Logarithmic','Exponential','Power2','Nonlinear']   #list of available models
 
 
@@ -1581,7 +1580,6 @@ class TransitFit():
         data['model']=self.model
         data['t0P']=self._t0P
         data['phase']=self.phase
-        #data['min_type']=self._min_type
         data['fit']=self._fit
         data['system']=self.systemParams
 
@@ -1630,7 +1628,6 @@ class TransitFit():
         self.model=data['model']
         self._t0P=data['t0P']
         self.phase=np.array(data['phase'])
-        #self._min_type=np.array(data['min_type'])
 
         if 'fit' in data: self._fit=data['fit']
         elif len(self.params_err)==0: self._fit='GA'
@@ -1647,8 +1644,9 @@ class TransitFit():
         E_obs=(t-t0)/P  #observed epoch
         f_obs=E_obs-np.round(E_obs)  #observed phase
 
-        self.phase=f_obs
-        return self.phase
+        if t is self.t: self.phase=f_obs
+
+        return f_obs
 
     def InfoGA(self,db,eps=False):
         '''statistics about GA or DE fitting'''
@@ -2330,10 +2328,10 @@ class TransitFit():
         return err
 
 
-
-    def Plot(self,name=None,no_plot=0,no_plot_err=0,params=None,eps=False,oc_min=True,
-             time_type='JD',offset=2400000,trans=True,title=None,epoch=False,
-             min_type=False,weight=None,trans_weight=False,model2=False,with_res=False,
+    #TODO!
+    def Plot(self,name=None,no_plot=0,no_plot_err=0,params=None,eps=False,
+             time_type='JD',offset=2400000,trans=True,center=True,title=None,phase=False,
+             weight=None,trans_weight=False,model2=False,with_res=False,
              bw=False,double_ax=False,legend=None,fig_size=None):
         '''plotting original O-C with model O-C based on current parameters set
         name - name of file to saving plot (if not given -> show graph)
@@ -2341,27 +2339,23 @@ class TransitFit():
         no_plot_err - number of errorful point which will not be plot
         params - set of params of current model (if not given -> current parameters set)
         eps - save also as eps file
-        oc_min - O-C in minutes (if False - days)
         time_type - type of JD in which is time (show in x label)
         offset - offset of time
         trans - transform time according to offset
+        center - center to mid transit
         title - name of graph
-        epoch - x axis in epoch
-        min_type - distinction of type of minimum
+        phase - x axis in phase
         weight - weight of data (shown as size of points)
         trans_weight - transform weights to range (1,10)
-        model2 - plot 2 model O-Cs - current params set and set given in "params"
+        model2 - plot 2 models - current params set and set given in "params"
         with_res - common plot with residue
         bw - Black&White plot
-        double_ax - two axes -> time and epoch
+        double_ax - two axes -> time and phase
         legend - labels for data and model(s) - give '' if no show label, 2nd model given in "params" is the last
         fig_size - custom figure size - e.g. (12,6)
 
         warning: weights have to be in same order as input data!
         '''
-        if epoch:
-            if not len(self.epoch)==len(self.t):
-                raise NameError('Epoch not callculated! Run function "Epoch" before it.')
 
         if model2:
             if len(params)==0:
@@ -2389,10 +2383,15 @@ class TransitFit():
             ax2=ax1
         ax1.yaxis.set_label_coords(-0.11,0.5)
 
+        self.Phase(params['t0'],params['P'])
+        if center:
+            E=np.round((self.t-params['t0'])/params['P'])
+            E=E[len(E)//2]
+            offset=params['t0']+params['P']*E
         #setting labels
-        if epoch and not double_ax:
-            ax2.set_xlabel('Epoch')
-            x=self.epoch
+        if phase and not double_ax:
+            ax2.set_xlabel('Phase')
+            x=self.phase
         elif offset>0:
             ax2.set_xlabel('Time ('+time_type+' - '+str(offset)+')')
             if not trans: offset=0
@@ -2402,29 +2401,14 @@ class TransitFit():
             offset=0
             x=self.t
 
-        if oc_min:
-            ax1.set_ylabel('O - C (min)')
-            k=minutes
-        else:
-            ax1.set_ylabel('O - C (d)')
-            k=1
+        ax1.set_ylabel('Flux')
 
         if title is not None:
             if double_ax: fig.subplots_adjust(top=0.85)
             fig.suptitle(title,fontsize=20)
 
         model=self.Model(self.t,params)
-        self.res=self.flux-model
-
-        #primary / secondary minimum
-        if min_type:
-            if not len(self.epoch)==len(self.t):
-                raise NameError('Epoch not callculated! Run function "Epoch" before it.')
-            prim=np.where(self._min_type==0)
-            sec=np.where(self._min_type==1)
-        else:
-            prim=np.arange(0,len(self.t),1)
-            sec=np.array([])
+        res=self.flux-model
 
         #set weight
         set_w=False
@@ -2450,17 +2434,10 @@ class TransitFit():
         else: color='b'
         if set_w:
             #using weights
-            prim=np.delete(prim,np.where(np.in1d(prim,errors)))
-            sec=np.delete(sec,np.where(np.in1d(sec,errors)))
-            if not len(prim)==0:
-                for i in range(len(w)):
-                    ax1.plot(x[prim[np.where(np.in1d(prim,w[i]))]],
-                             (self.flux)[prim[np.where(np.in1d(prim,w[i]))]],color+'o',markersize=size[i],label=legend[0],zorder=1)
-            if not len(sec)==0:
-                for i in range(len(w)):
-                    ax1.plot(x[sec[np.where(np.in1d(sec,w[i]))]],
-                             (self.flux)[sec[np.where(np.in1d(sec,w[i]))]],color+'o',markersize=size[i],
-                             fillstyle='none',markeredgewidth=1,markeredgecolor=color,label=legend[0],zorder=1)
+            #prim=np.delete(prim,np.where(np.in1d(prim,errors)))
+            for i in range(len(w)):
+                ax1.plot(x[np.where(w[i])],
+                        (self.flux)[np.where(w[i])],color+'o',markersize=size[i],label=legend[0],zorder=1)
 
         else:
             #without weight
@@ -2469,54 +2446,20 @@ class TransitFit():
                 if self._corr_err: err=self._old_err
                 else: err=self.err
                 errors=np.append(errors,GetMax(err,no_plot_err))  #remove errorful points
-                prim=np.delete(prim,np.where(np.in1d(prim,errors)))
-                sec=np.delete(sec,np.where(np.in1d(sec,errors)))
-                if not len(prim)==0:
-                    ax1.errorbar(x[prim],(self.flux*k)[prim],yerr=(err*k)[prim],fmt=color+'o',markersize=5,label=legend[0],zorder=1)
-                if not len(sec)==0:
-                    ax1.errorbar(x[sec],(self.flux*k)[sec],yerr=(err*k)[sec],fmt=color+'o',markersize=5,
-                                 fillstyle='none',markeredgewidth=1,markeredgecolor=color,label=legend[0],zorder=1)
-
+                #prim=np.delete(prim,np.where(np.in1d(prim,errors)))
+                ax1.errorbar(x,self.flux,yerr=err,fmt=color+'o',markersize=5,label=legend[0],zorder=1)
             else:
                 #without errors
-                prim=np.delete(prim,np.where(np.in1d(prim,errors)))
-                sec=np.delete(sec,np.where(np.in1d(sec,errors)))
-                if not len(prim)==0:
-                    ax1.plot(x[prim],(self.flux*k)[prim],color+'o',label=legend[0],zorder=1)
-                if not len(sec)==0:
-                    ax1.plot(x[sec],(self.flux*k)[sec],color+'o',label=legend[0],
-                             mfc='none',markeredgewidth=1,markeredgecolor=color,zorder=1)
+                #prim=np.delete(prim,np.where(np.in1d(prim,errors)))
+                ax1.plot(x,self.flux,color+'o',label=legend[0],zorder=1)
 
         #expand time interval for model O-C
         if len(self.t)<1000:
-            if 't0' in params:
-                old_epoch=self.epoch
-                dE=(self.epoch[-1]-self.epoch[0])/1000.
-                E=np.linspace(self.epoch[0]-50*dE,self.epoch[-1]+50*dE,1100)
-                t1=params['t0']+params['P']*E
-                self.epoch=E
-            elif epoch:
-                dE=(self.epoch[-1]-self.epoch[0])/1000.
-                E=np.linspace(self.epoch[0]-50*dE,self.epoch[-1]+50*dE,1100)
-                t1=self._t0P[0]+self._t0P[1]*E
-            else:
-                dt=(self.t[-1]-self.t[0])/1000.
-                t1=np.linspace(self.t[0]-50*dt,self.t[-1]+50*dt,1100)
+            dt=(self.t[-1]-self.t[0])/1000.
+            t1=np.linspace(self.t[0]-50*dt,self.t[-1]+50*dt,1100)
         else:
-            if 't0' in params:
-                old_epoch=self.epoch
-                dE=(self.epoch[-1]-self.epoch[0])/len(self.epoch)
-                E=np.linspace(self.epoch[0]-0.05*len(self.epoch)*dE,self.epoch[-1]+0.05*len(self.epoch)*dE,int(1.1*len(self.epoch)))
-                t1=params['t0']+params['P']*E
-                self.epoch=E
-            elif epoch:
-                dE=(self.epoch[-1]-self.epoch[0])/len(self.epoch)
-                E=np.linspace(self.epoch[0]-0.05*len(self.epoch)*dE,self.epoch[-1]+0.05*len(self.epoch)*dE,int(1.1*len(self.epoch)))
-                t1=self._t0P[0]+self._t0P[1]*E
-            else:
-                dt=(self.t[-1]-self.t[0])/len(self.t)
-                t1=np.linspace(self.t[0]-0.05*len(self.t)*dt,self.t[-1]+0.05*len(self.t)*dt,int(1.1*len(self.t)))
-
+            dt=(self.t[-1]-self.t[0])/len(self.t)
+            t1=np.linspace(self.t[0]-0.05*len(self.t)*dt,self.t[-1]+0.05*len(self.t)*dt,int(1.1*len(self.t)))
 
         if bw:
             color='k'
@@ -2526,8 +2469,8 @@ class TransitFit():
             lw=1
 
         model_long=self.Model(t1,params)
-        if epoch and not double_ax: ax1.plot(E,model_long*k,color,linewidth=lw,label=legend[1],zorder=2)
-        else: ax1.plot(t1-offset,model_long*k,color,linewidth=lw,label=legend[1],zorder=2)
+        if phase and not double_ax: ax1.plot(self.Phase(params['t0'],params['P'],t1),model_long,color,linewidth=lw,label=legend[1],zorder=2)
+        else: ax1.plot(t1-offset,model_long,color,linewidth=lw,label=legend[1],zorder=2)
 
         if model2:
             #plot second model
@@ -2538,45 +2481,40 @@ class TransitFit():
                 color='g'
                 lt='-'
             model_set=self.Model(t1,params_model)
-            if epoch and not double_ax: ax1.plot(E,model_set*k,color+lt,linewidth=lw,label=legend[2],zorder=3)
-            else: ax1.plot(t1-offset,model_set*k,color+lt,linewidth=lw,label=legend[2],zorder=3)
+            if phase and not double_ax: ax1.plot(self.Phase(params['t0'],params['P'],t1),model_set,color+lt,linewidth=lw,label=legend[2],zorder=3)
+            else: ax1.plot(t1-offset,model_set,color+lt,linewidth=lw,label=legend[2],zorder=3)
 
         if show_legend: ax1.legend()
 
-        if 't0' in params: self.epoch=old_epoch
-
         if double_ax:
             #setting secound axis
-            if not len(self.epoch)==len(self.t):
-                raise NameError('Epoch not callculated! Run function "Epoch" before it.')
             ax3=ax1.twiny()
-            #generate plot to obtain correct axis in epoch
+            #generate plot to obtain correct axis in phase
             #expand time interval for model O-C
             if len(self.t)<1000:
-                dE=(self.epoch[-1]-self.epoch[0])/1000.
-                E=np.linspace(self.epoch[0]-50*dE,self.epoch[-1]+50*dE,1100)
+                dt=(self.t[-1]-self.t[0])/1000.
+                t1=np.linspace(self.t[0]-50*dt,self.t[-1]+50*dt,1100)
             else:
-                dE=(self.epoch[-1]-self.epoch[0])/len(self.epoch)
-                E=np.linspace(self.epoch[0]-0.05*len(self.epoch)*dE,self.epoch[-1]+0.05*len(self.epoch)*dE,int(1.1*len(self.epoch)))
-            l=ax3.plot(E,model_long*k)
-            ax3.set_xlabel('Epoch')
+                dt=(self.t[-1]-self.t[0])/len(self.t)
+                t1=np.linspace(self.t[0]-0.05*len(self.t)*dt,self.t[-1]+0.05*len(self.t)*dt,int(1.1*len(self.t)))
+            l=ax3.plot(t1,model_long)
+            ax3.set_xlabel('Phase')
             l.pop(0).remove()
             lims=np.array(ax1.get_xlim())
-            epoch=np.round((lims-self._t0P[0])/self._t0P[1]*2)/2.
-            ax3.set_xlim(epoch)
+            ph=self.Phase(params['t0'],params['P'],lims)
+            ax3.set_xlim(ph)
 
         if with_res:
             #plot residue
             if bw: color='k'
             else: color='b'
-            if oc_min: ax2.set_ylabel('Residue (min)')
-            else: ax2.set_ylabel('Residue (d)')
+            ax2.set_ylabel('Residue')
             ax2.yaxis.set_label_coords(-0.1,0.5)
-            m=round(abs(max(-min(self.res),max(self.res)))*k,2)
+            m=abs(max(-min(res),max(res)))
             ax2.set_autoscale_on(False)
             ax2.set_ylim([-m,m])
             ax2.yaxis.set_ticks(np.array([-m,0,m]))
-            ax2.plot(x,self.res*k,color+'o')
+            ax2.plot(x,res,color+'o')
             ax2.xaxis.labelpad=15
             ax2.yaxis.labelpad=15
             mpl.subplots_adjust(hspace=.07)
@@ -2588,7 +2526,7 @@ class TransitFit():
             if eps: mpl.savefig(name+'.eps')
             mpl.close(fig)
 
-
+    #TODO!
     def PlotRes(self,name=None,no_plot=0,no_plot_err=0,params=None,eps=False,oc_min=True,
                 time_type='JD',offset=2400000,trans=True,title=None,epoch=False,
                 min_type=False,weight=None,trans_weight=False,bw=False,double_ax=False,
@@ -2747,59 +2685,43 @@ class TransitFit():
             mpl.close(fig)
 
 
-
-    def SaveModel(self,name,E_min=None,E_max=None,n=1000,params=None,t0=None,P=None):
-        '''save model curve of O-C to file
+    #TODO!
+    def SaveModel(self,name,t_min=None,t_max=None,n=1000,phase=False,params=None):
+        '''save model curve of transit to file
         name - name of output file
-        E_min - minimal value of epoch
-        E_max - maximal value of epoch
+        t_min - minimal value of time
+        t_max - maximal value of time
         n - number of data points
+        phase - export phase curve (min/max value give in t_min/t_max as phase)
         params - parameters of model (if not given, used "params" from class)
-        t0 - time of zeros epoch (necessary if not given in model or epoch not calculated)
-        P - period (necessary if not given in model or epoch not calculated)
         '''
 
         if params is None: params=self.params
 
-        #get linear ephemeris
-        if 't0' in params: t0=params['t0']
-        elif len(self.epoch)==len(self.t): t0=self._t0P[0]
-        elif t0 is None: raise TypeError('t0 is not given!')
-
-        if 'P' in params: P=params['P']
-        elif len(self.epoch)==len(self.t): P=self._t0P[1]
-        elif P is None: raise TypeError('P is not given!')
-
-        old_epoch=self.epoch
-        if not len(self.epoch)==len(self.t): self.Epoch(t0,P)
-
         #same interval of epoch like in plot
-        if len(self.epoch)<1000: dE=50*(self.epoch[-1]-self.epoch[0])/1000.
-        else: dE=0.05*(self.epoch[-1]-self.epoch[0])
+        #TODO!
+        if len(self.t)<1000: dt=50*(self.t[-1]-self.t[0])/1000.
+        else: dt=0.05*(self.t[-1]-self.t[0])
 
-        if E_min is None: E_min=min(self.epoch)-dE
-        if E_max is None: E_max=max(self.epoch)+dE
+        if t_min is None: t_min=min(self.t)-dt
+        if t_max is None: t_max=max(self.t)+dt
 
-        self.epoch=np.linspace(E_min,E_max,n)
-        t=t0+P*self.epoch
+        t=np.linspace(t_min,t_max,n)
+        phase=self.Phase(params['t0'],params['P'],t)
 
         model=self.Model(t,params)
 
         f=open(name,'w')
-        np.savetxt(f,np.column_stack((t+model,self.epoch,model)),fmt=["%14.7f",'%10.3f',"%+12.10f"]
-                   ,delimiter='    ',header='Obs. Time'.ljust(14,' ')+'    '+'Epoch'.ljust(10,' ')
-                   +'    model O-C')
+        np.savetxt(f,np.column_stack((t,phase,model)),fmt=["%14.7f",'%8.5f',"%12.10f"]
+                   ,delimiter='    ',header='Time'.ljust(12,' ')+'    '+'Phase'.ljust(8,' ')
+                   +'    '+'Model curve')
         f.close()
 
-        self.epoch=old_epoch
 
-
-    def SaveRes(self,name,params=None,t0=None,P=None,weight=None):
+    def SaveRes(self,name,params=None,weight=None):
         '''save residue to file
         name - name of output file
         params - parameters of model (if not given, used "params" from class)
-        t0 - time of zeros epoch (necessary if not given in model or epoch not calculated)
-        P - period (necessary if not given in model or epoch not calculated)
         weight - weights of input data points
 
         warning: weights have to be in same order as input date!
@@ -2808,41 +2730,29 @@ class TransitFit():
 
         if params is None: params=self.params
 
-        #get linear ephemeris
-        if 't0' in params: t0=params['t0']
-        elif len(self.epoch)==len(self.t): t0=self._t0P[0]
-        elif t0 is None: raise TypeError('t0 is not given!')
-
-        if 'P' in params: P=params['P']
-        elif len(self.epoch)==len(self.t): P=self._t0P[1]
-        elif P is None: raise TypeError('P is not given!')
-
-        old_epoch=self.epoch
-        if not len(self.epoch)==len(self.t): self.Epoch(self.t,t0,P)
-
         model=self.Model(self.t,params)
+        phase=self.Phase(params['t0'],params['P'])
 
-        self.res=self.flux-model
+        res=self.flux-model
         f=open(name,'w')
         if self._set_err:
             if self._corr_err: err=self._old_err
             else: err=self.err
-            np.savetxt(f,np.column_stack((self.t,self.epoch,self.res,err)),
-                       fmt=["%14.7f",'%10.3f',"%+12.10f","%.10f"],delimiter="    ",
-                       header='Obs. Time'.ljust(14,' ')+'    '+'Epoch'.ljust(10,' ')
-                       +'    '+'new O-C'.ljust(10,' ')+'    Error')
+            np.savetxt(f,np.column_stack((self.t,phase,res,err)),
+                       fmt=["%14.7f",'%8.5f',"%12.10f","%.10f"],delimiter="    ",
+                       header='Time'.ljust(12,' ')+'    '+'Phase'.ljust(10,' ')
+                       +'    '+'Residue'.ljust(10,' ')+'    Error')
         elif weight is not None:
-            np.savetxt(f,np.column_stack((self.t,self.epoch,self.res,np.array(weight)[self._order])),
-                       fmt=["%14.7f",'%10.3f',"%+12.10f","%.10f"],delimiter="    ",
-                       header='Obs. Time'.ljust(14,' ')+'    '+'Epoch'.ljust(10,' ')
-                       +'    '+'new O-C'.ljust(12,' ')+'    Weight')
+            np.savetxt(f,np.column_stack((self.t,phase,res,np.array(weight)[self._order])),
+                       fmt=["%14.7f",'%8.5f',"%12.10f","%.10f"],delimiter="    ",
+                       header='Time'.ljust(12,' ')+'    '+'Phase'.ljust(10,' ')
+                       +'    '+'Residue'.ljust(12,' ')+'    Weight')
         else:
-            np.savetxt(f,np.column_stack((self.t,self.epoch,self.res)),
-                       fmt=["%14.7f",'%10.3f',"%+12.10f"],delimiter="    ",
-                       header='Obs. Time'.ljust(14,' ')+'    '+'Epoch'.ljust(10,' ')
-                       +'    new O-C')
+            np.savetxt(f,np.column_stack((self.t,phase,res)),
+                       fmt=["%14.7f",'%8.5f',"%12.10f"],delimiter="    ",
+                       header='Time'.ljust(12,' ')+'    '+'Phase'.ljust(10,' ')
+                       +'    '+'Residue')
         f.close()
-        self.epoch=old_epoch
 
 
 
