@@ -28,6 +28,7 @@ except:
         import matplotlib.pyplot as mpl
 
 from matplotlib import gridspec
+import matplotlib.ticker as mtick
 #mpl.style.use('classic')   #classic style (optional)
 
 import numpy as np
@@ -2330,8 +2331,8 @@ class TransitFit():
 
     #TODO!
     def Plot(self,name=None,no_plot=0,no_plot_err=0,params=None,eps=False,
-             time_type='JD',offset=2400000,trans=True,center=True,title=None,phase=False,
-             weight=None,trans_weight=False,model2=False,with_res=False,
+             time_type='JD',offset=2400000,trans=True,center=True,title=None,hours=False,
+             phase=False,weight=None,trans_weight=False,model2=False,with_res=False,
              bw=False,double_ax=False,legend=None,fig_size=None):
         '''plotting original O-C with model O-C based on current parameters set
         name - name of file to saving plot (if not given -> show graph)
@@ -2343,6 +2344,7 @@ class TransitFit():
         offset - offset of time
         trans - transform time according to offset
         center - center to mid transit
+        hours - time in hours (except in days)
         title - name of graph
         phase - x axis in phase
         weight - weight of data (shown as size of points)
@@ -2381,9 +2383,14 @@ class TransitFit():
         else:
             ax1=fig.add_subplot(1,1,1)
             ax2=ax1
-        ax1.yaxis.set_label_coords(-0.11,0.5)
+        ax1.yaxis.set_label_coords(-0.175,0.5)
+        ax1.ticklabel_format(useOffset=False)
 
         self.Phase(params['t0'],params['P'])
+        l=''
+        if hours:
+            center=True
+            l=' [h]'
         if center:
             E=np.round((self.t-params['t0'])/params['P'])
             E=E[len(E)//2]
@@ -2393,14 +2400,15 @@ class TransitFit():
             ax2.set_xlabel('Phase')
             x=self.phase
         elif offset>0:
-            ax2.set_xlabel('Time ('+time_type+' - '+str(offset)+')')
+            ax2.set_xlabel('Time ('+time_type+' - '+str(round(offset,2))+')'+l)
             if not trans: offset=0
             x=self.t-offset
         else:
-            ax2.set_xlabel('Time ('+time_type+')')
+            ax2.set_xlabel('Time ('+time_type+')'+l)
             offset=0
             x=self.t
-
+        if hours: k=24  #convert to hours
+        else: k=1
         ax1.set_ylabel('Flux')
 
         if title is not None:
@@ -2436,7 +2444,7 @@ class TransitFit():
             #using weights
             #prim=np.delete(prim,np.where(np.in1d(prim,errors)))
             for i in range(len(w)):
-                ax1.plot(x[np.where(w[i])],
+                ax1.plot(k*x[np.where(w[i])],
                         (self.flux)[np.where(w[i])],color+'o',markersize=size[i],label=legend[0],zorder=1)
 
         else:
@@ -2447,11 +2455,11 @@ class TransitFit():
                 else: err=self.err
                 errors=np.append(errors,GetMax(err,no_plot_err))  #remove errorful points
                 #prim=np.delete(prim,np.where(np.in1d(prim,errors)))
-                ax1.errorbar(x,self.flux,yerr=err,fmt=color+'o',markersize=5,label=legend[0],zorder=1)
+                ax1.errorbar(k*x,self.flux,yerr=err,fmt=color+'o',markersize=5,label=legend[0],zorder=1)
             else:
                 #without errors
                 #prim=np.delete(prim,np.where(np.in1d(prim,errors)))
-                ax1.plot(x,self.flux,color+'o',label=legend[0],zorder=1)
+                ax1.plot(k*x,self.flux,color+'o',label=legend[0],zorder=1)
 
         #expand time interval for model O-C
         if len(self.t)<1000:
@@ -2470,7 +2478,7 @@ class TransitFit():
 
         model_long=self.Model(t1,params)
         if phase and not double_ax: ax1.plot(self.Phase(params['t0'],params['P'],t1),model_long,color,linewidth=lw,label=legend[1],zorder=2)
-        else: ax1.plot(t1-offset,model_long,color,linewidth=lw,label=legend[1],zorder=2)
+        else: ax1.plot(k*(t1-offset),model_long,color,linewidth=lw,label=legend[1],zorder=2)
 
         if model2:
             #plot second model
@@ -2482,7 +2490,7 @@ class TransitFit():
                 lt='-'
             model_set=self.Model(t1,params_model)
             if phase and not double_ax: ax1.plot(self.Phase(params['t0'],params['P'],t1),model_set,color+lt,linewidth=lw,label=legend[2],zorder=3)
-            else: ax1.plot(t1-offset,model_set,color+lt,linewidth=lw,label=legend[2],zorder=3)
+            else: ax1.plot(k*(t1-offset),model_set,color+lt,linewidth=lw,label=legend[2],zorder=3)
 
         if show_legend: ax1.legend()
 
@@ -2497,10 +2505,10 @@ class TransitFit():
             else:
                 dt=(self.t[-1]-self.t[0])/len(self.t)
                 t1=np.linspace(self.t[0]-0.05*len(self.t)*dt,self.t[-1]+0.05*len(self.t)*dt,int(1.1*len(self.t)))
-            l=ax3.plot(t1,model_long)
+            l=ax3.plot(k*(t1-offset),model_long)
             ax3.set_xlabel('Phase')
             l.pop(0).remove()
-            lims=np.array(ax1.get_xlim())
+            lims=np.array(ax1.get_xlim())/k+offset
             ph=self.Phase(params['t0'],params['P'],lims)
             ax3.set_xlim(ph)
 
@@ -2508,15 +2516,17 @@ class TransitFit():
             #plot residue
             if bw: color='k'
             else: color='b'
-            ax2.set_ylabel('Residue')
-            ax2.yaxis.set_label_coords(-0.1,0.5)
-            m=abs(max(-min(res),max(res)))
+            ax2.set_ylabel('Residue (%)')
+            ax2.yaxis.set_label_coords(-0.15,0.5)
+            m=abs(max(-min(res),max(res)))*100
             ax2.set_autoscale_on(False)
             ax2.set_ylim([-m,m])
             ax2.yaxis.set_ticks(np.array([-m,0,m]))
-            ax2.plot(x,res,color+'o')
+            ax2.plot(k*x,res*100,color+'o')
             ax2.xaxis.labelpad=15
             ax2.yaxis.labelpad=15
+            ax2.ticklabel_format(useOffset=False)
+            ax2.yaxis.set_major_formatter(mtick.FormatStrFormatter('%.1g'))
             mpl.subplots_adjust(hspace=.07)
             mpl.setp(ax1.get_xticklabels(),visible=False)
 
