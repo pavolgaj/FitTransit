@@ -64,8 +64,8 @@ flux1=tf.Model()
 tf.Summary()
 
 #tf.Save('test')
-#tf.SaveModel('model.dat')
-#tf.SaveRes('res.dat')
+tf.SaveModel('model.dat')
+tf.SaveRes('res.dat')
 
 mpl.figure()
 mpl.errorbar((t-t0)*24,flux,yerr=err,fmt='o')
@@ -76,7 +76,5 @@ tf.Plot()
 tf.Plot(double_ax=True)
 tf.Plot(with_res=True)
 tf.Plot(model2=True,params=param)
-tf.Plot(hours=True)
-tf.Plot(hours=True,double_ax=True,with_res=True)
 
 mpl.show()
