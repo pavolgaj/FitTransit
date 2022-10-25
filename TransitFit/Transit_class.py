@@ -1530,12 +1530,12 @@ class TransitFit():
         self._calc_err=False    #errors were calculated
         self._corr_err=False    #errors were corrected
         self._old_err=[]        #given errors
-        self.model='Quadratic'  #used model of limb-darkening
+        self.model='TransitQuadratic'  #used model
         self._t0P=[]            #linear ephemeris
         self.phase=[]           #phases
         self.res=[]             #residua
         self._fit=''            #used algorithm for fitting (GA/DE/MCMC)
-        self.availableModels=['Uniform','Linear','Quadratic','SquareRoot','Logarithmic','Exponential','Power2','Nonlinear']   #list of available models
+        self.availableModels=['TransitUniform','TransitLinear','TransitQuadratic','TransitSquareRoot','TransitLogarithmic','TransitExponential','TransitPower2','TransitNonlinear']   #list of available models
 
 
     def AvailableModels(self):
@@ -1548,10 +1548,13 @@ class TransitFit():
 
         def Display(model):
             s=model+': '
-            s+='t0, P, Rp, a, i, e, w, '
-            if 'Uniform' not in model: s+='c1, '
-            if ('Linear' not in model) and ('Power2' not in model): s+='c2, '
-            if 'Nonlinear' in model: s+='c3, c4, '
+            if 'Transit' in model:
+                s+='t0, P, Rp, a, i, e, w, '
+                if 'Uniform' not in model:
+                    s+='c1, '
+                    if ('Linear' not in model) and ('Power2' not in model):
+                        s+='c2, '
+                        if 'Nonlinear' in model: s+='c3, c4, '
             print(s[:-2])
 
         if model is None: model=self.model
@@ -1694,7 +1697,7 @@ class TransitFit():
         params.inc=i
         params.ecc=e
         params.w=w
-        params.limb_dark=self.model.lower()
+        params.limb_dark=self.model[7:].lower()
         params.u=u
 
         m=batman.TransitModel(params,t)    #initializes model
@@ -2157,6 +2160,7 @@ class TransitFit():
     def DepthDur(self):
         '''calculate depth and duration of transit'''
         output={}
+        if 'Rp' not in self.params: return output
         self.paramsMore['delta']=self.params['Rp']**2
         output['delta']=self.paramsMore['delta']
 
@@ -2235,6 +2239,7 @@ class TransitFit():
     def AbsoluteParam(self,R,R_err=0):
         '''calculate absolute radius and semi-mayor axis of planet from radius of star'''
         output={}
+        if 'Rp' not in self.params: return output
         self.paramsMore['a']=self.params['a']*R*rSun/au
         self.paramsMore['Rp']=self.params['Rp']*R*rSun/rJup
         output['a']=self.paramsMore['a']
@@ -2264,14 +2269,17 @@ class TransitFit():
         ''''calculate model curve of transit in given times based on given set of parameters'''
         if t is None: t=self.t
         if param is None: param=self.params
-        u=[]
-        if 'Uniform' not in self.model: u.append(param['c1'])
-        if ('Linear' not in self.model) or ('Power2' not in self.model): u.append(param['c2'])
-        if 'Nonlinear' in self.model:
-            u.append(param['c3'])
-            u.append(param['c4'])
+        if 'Transit' in self.model:
+            u=[]
+            if 'Uniform' not in self.model:
+                u.append(param['c1'])
+                if ('Linear' not in self.model) or ('Power2' not in self.model):
+                    u.append(param['c2'])
+                    if 'Nonlinear' in self.model:
+                        u.append(param['c3'])
+                        u.append(param['c4'])
 
-        model=self.Transit(t,param['t0'],param['P'],param['Rp'],param['a'],param['i'],param['e'],param['w'],u)
+            model=self.Transit(t,param['t0'],param['P'],param['Rp'],param['a'],param['i'],param['e'],param['w'],u)
         return model
 
 
