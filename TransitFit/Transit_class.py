@@ -1555,7 +1555,8 @@ class TransitFit():
                     if ('Linear' not in model) and ('Power2' not in model):
                         s+='c2, '
                         if 'Nonlinear' in model: s+='c3, c4, '
-            print(s[:-2])
+            s+='p0, p1, p2'
+            print(s)
 
         if model is None: model=self.model
         if allModels:
@@ -1652,6 +1653,48 @@ class TransitFit():
 
         return f_obs
 
+    def Normalise(self,part,reverse=False,rewrite=True,plot=False):
+        '''normalise lightcurve with 2th-order polynom using "part" of LC given by start and stop time
+        reverse - don't use "part" of LC, use rest of it
+        rewrite - replace original LC
+        plot - show fit
+        output coeffs and new LC'''
+        i=((self.t)>part[0])*((self.t)<part[1])
+        if reverse: i=~i
+
+        #shift time to center of data, otherwise problems with polyfit
+        t0=np.mean(self.t)
+        p=np.polyfit(self.t[i]-t0,self.flux[i],2,w=1/self.err[i])
+        pv=np.polyval(p,self.t-t0)
+
+        flux=self.flux/pv
+        err=self.err/pv
+
+        if plot:
+            fig=mpl.figure()
+            if self._set_err:
+                mpl.errorbar(self.t,self.flux,yerr=self.err,fmt='bo',markersize=5,zorder=1)
+            else: mpl.plot(self.t,self.flux,fmt='bo',markersize=5,zorder=1)
+            mpl.plot(self.t,pv,'r-',zorder=2)
+            mpl.plot(self.t[i],np.polyval(p,self.t[i]-t0),'g.',zorder=2)
+
+            fig1=mpl.figure()
+            if self._set_err:
+                mpl.errorbar(self.t,flux,yerr=err,fmt='bo',markersize=5,zorder=1)
+            else: mpl.plot(self.t,flux,fmt='bo',markersize=5,zorder=1)
+
+
+        if rewrite:
+            self.flux=flux
+            self.err=err
+
+        #reverse time shift
+        p[2]=p[2]-p[1]*np.mean(self.t)+p[0]*np.mean(self.t)**2
+        p[1]=p[1]-2*p[0]*np.mean(self.t)
+
+        return p[::-1],[flux,err]
+
+
     def InfoGA(self,db,eps=False):
         '''statistics about GA or DE fitting'''
         info=InfoGAClass(db)
@@ -1675,7 +1718,7 @@ class TransitFit():
 
         for p in info.pars: info.OneParam(p,eps)
 
-    def Transit(self,t,t0,P,Rp,a,i,e,w,u):
+    def Transit(self,t,t0,P,Rp,a,i,e,w,u,p):
         '''model of transit from batman package
         t - times of observations (np.array alebo float) [days]
         t0 - time of reference transit [days]
@@ -1686,6 +1729,7 @@ class TransitFit():
         e - eccentricity of transiting exoplanet
         w - longitude of periastrum of transiting exoplanet [deg]
         u - limb darkening coefficients (in list)
+        p - 2nd order polynom coefficients (in list / np.array)
         output in fluxes
         '''
         params=batman.TransitParams()       #object to store transit parameters
@@ -1702,7 +1746,7 @@ class TransitFit():
 
         m=batman.TransitModel(params,t)    #initializes model
 
-        flux=m.light_curve(params)                    #calculates light curve
+        flux=m.light_curve(params)*np.polyval(p,t-t0)         #calculates light curve
 
         return flux
 
@@ -2036,7 +2080,7 @@ class TransitFit():
         err=[]
         for x in sorted(self.params.keys()):
             #names, units, values and errors of model params
-            if x[0]=='c': continue
+            if x[0]=='c' or x[0]=='p': continue
             params.append(x)
             vals.append(str(self.params[x]))
             if not len(self.params_err)==0:
@@ -2057,8 +2101,9 @@ class TransitFit():
                 else: err.append(str(float(err[-1])/year)) #error calculated
                 unit.append('yr')
             elif x[0]=='t': unit.append('JD')
-            elif x[0]=='e' or x[0]=='c': unit.append('')
+            elif x[0]=='e' or x[0]=='c' or x[0]=='p': unit.append('')
             elif x[0]=='w' or x[0]=='i': unit.append('deg')
+            else: unit.append('NA!')
 
         #make blank line
         params.append('')
@@ -2066,6 +2111,25 @@ class TransitFit():
         err.append('')
         unit.append('')
         for x in sorted([p for p in self.params.keys() if p[0]=='c']):
+            #names, units, values and errors of model params
+            params.append(x)
+            vals.append(str(self.params[x]))
+            if not len(self.params_err)==0:
+                #errors calculated
+                if x in self.params_err: err.append(str(self.params_err[x]))
+                elif x in self.fit_params: err.append('---')   #errors not calculated
+                else: err.append('fixed')  #fixed params
+            elif x in self.fit_params: err.append('---')  #errors not calculated
+            else: err.append('fixed')   #fixed params
+            #add units
+            unit.append('')
+
+        #make blank line
+        params.append('')
+        vals.append('')
+        err.append('')
+        unit.append('')
+        for x in sorted([p for p in self.params.keys() if p[0]=='p']):
             #names, units, values and errors of model params
             params.append(x)
             vals.append(str(self.params[x]))
@@ -2269,6 +2333,7 @@ class TransitFit():
         ''''calculate model curve of transit in given times based on given set of parameters'''
         if t is None: t=self.t
         if param is None: param=self.params
+        p=[param['p2'],param['p1'],param['p0']]
         if 'Transit' in self.model:
             u=[]
             if 'Uniform' not in self.model:
@@ -2279,7 +2344,7 @@ class TransitFit():
                         u.append(param['c3'])
                         u.append(param['c4'])
 
-            model=self.Transit(t,param['t0'],param['P'],param['Rp'],param['a'],param['i'],param['e'],param['w'],u)
+            model=self.Transit(t,param['t0'],param['P'],param['Rp'],param['a'],param['i'],param['e'],param['w'],u,p)
         return model
 
 
@@ -2341,7 +2406,7 @@ class TransitFit():
     def Plot(self,name=None,no_plot=0,no_plot_err=0,params=None,eps=False,
              time_type='JD',offset=2400000,trans=True,center=True,title=None,hours=False,
              phase=False,weight=None,trans_weight=False,model2=False,with_res=False,
-             bw=False,double_ax=False,legend=None,fig_size=None):
+             bw=False,double_ax=False,legend=None,fig_size=None,detrend=False):
         '''plotting original O-C with model O-C based on current parameters set
         name - name of file to saving plot (if not given -> show graph)
         no_plot - number of outlier point which will not be plot
@@ -2363,6 +2428,7 @@ class TransitFit():
         double_ax - two axes -> time and phase
         legend - labels for data and model(s) - give '' if no show label, 2nd model given in "params" is the last
         fig_size - custom figure size - e.g. (12,6)
+        detrend - normalize (detrend) curve using polynom given by p0,p1,p2 params
 
         warning: weights have to be in same order as input data!
         '''
@@ -2417,14 +2483,18 @@ class TransitFit():
             x=self.t
         if hours: k=24  #convert to hours
         else: k=1
-        ax1.set_ylabel('Flux')
+        if detrend: ax1.set_ylabel('Norm. Flux')
+        else: ax1.set_ylabel('Flux')
 
         if title is not None:
             if double_ax: fig.subplots_adjust(top=0.85)
             fig.suptitle(title,fontsize=20)
 
         model=self.Model(self.t,params)
-        res=self.flux-model
+        flux=np.array(self.flux)
+        res=flux-model
+        if detrend:
+            flux/=np.polyval([params['p2'],params['p1'],params['p0']],self.t-params['t0'])
 
         #set weight
         set_w=False
@@ -2445,7 +2515,7 @@ class TransitFit():
             else:
                 warnings.warn('Shape of "weight" is different to shape of "time". Weight will be ignore!')
 
-        errors=GetMax(abs(model-self.flux),no_plot)  #remove outlier points
+        errors=GetMax(abs(model-flux),no_plot)  #remove outlier points
         if bw: color='k'
         else: color='b'
         if set_w:
@@ -2453,21 +2523,23 @@ class TransitFit():
             #prim=np.delete(prim,np.where(np.in1d(prim,errors)))
             for i in range(len(w)):
                 ax1.plot(k*x[np.where(w[i])],
-                        (self.flux)[np.where(w[i])],color+'o',markersize=size[i],label=legend[0],zorder=1)
+                        flux[np.where(w[i])],color+'o',markersize=size[i],label=legend[0],zorder=1)
 
         else:
             #without weight
             if self._set_err:
                 #using errors
-                if self._corr_err: err=self._old_err
-                else: err=self.err
+                if self._corr_err: err=np.array(self._old_err)
+                else: err=np.array(self.err)
+                if detrend:
+                    err/=np.polyval([params['p2'],params['p1'],params['p0']],self.t-params['t0'])
                 errors=np.append(errors,GetMax(err,no_plot_err))  #remove errorful points
                 #prim=np.delete(prim,np.where(np.in1d(prim,errors)))
-                ax1.errorbar(k*x,self.flux,yerr=err,fmt=color+'o',markersize=5,label=legend[0],zorder=1)
+                ax1.errorbar(k*x,flux,yerr=err,fmt=color+'o',markersize=5,label=legend[0],zorder=1)
             else:
                 #without errors
                 #prim=np.delete(prim,np.where(np.in1d(prim,errors)))
-                ax1.plot(k*x,self.flux,color+'o',label=legend[0],zorder=1)
+                ax1.plot(k*x,flux,color+'o',label=legend[0],zorder=1)
 
         #expand time interval for model O-C
         if len(self.t)<1000:
@@ -2485,6 +2557,9 @@ class TransitFit():
             lw=1
 
         model_long=self.Model(t1,params)
+        if detrend:
+            model_long/=np.polyval([params['p2'],params['p1'],params['p0']],t1-params['t0'])
+
         if phase and not double_ax: ax1.plot(self.Phase(params['t0'],params['P'],t1),model_long,color,linewidth=lw,label=legend[1],zorder=2)
         else: ax1.plot(k*(t1-offset),model_long,color,linewidth=lw,label=legend[1],zorder=2)
 
@@ -2497,6 +2572,9 @@ class TransitFit():
                 color='g'
                 lt='-'
             model_set=self.Model(t1,params_model)
+            if detrend:
+                model_set/=np.polyval([params['p2'],params['p1'],params['p0']],t1-params['t0'])
+
             if phase and not double_ax: ax1.plot(self.Phase(params['t0'],params['P'],t1),model_set,color+lt,linewidth=lw,label=legend[2],zorder=3)
             else: ax1.plot(k*(t1-offset),model_set,color+lt,linewidth=lw,label=legend[2],zorder=3)
 
