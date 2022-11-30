@@ -1498,6 +1498,8 @@ class _NumpyEncoder(json.JSONEncoder):
 
 class TransitFit():
     '''class for fitting transits'''
+    availableModels=['TransitUniform','TransitLinear','TransitQuadratic','TransitSquareRoot','TransitLogarithmic','TransitExponential','TransitPower2','TransitNonlinear','Gauss']   #list of available models
+
     def __init__(self,t,flux,err=None):
         '''loading times, fluxes, (errors)'''
         self.t=np.array(t)
@@ -1535,13 +1537,12 @@ class TransitFit():
         self.phase=[]           #phases
         self.res=[]             #residua
         self._fit=''            #used algorithm for fitting (GA/DE/MCMC)
-        self.availableModels=['TransitUniform','TransitLinear','TransitQuadratic','TransitSquareRoot','TransitLogarithmic','TransitExponential','TransitPower2','TransitNonlinear']   #list of available models
 
 
     def AvailableModels(self):
         '''print available models for fitting O-Cs'''
         print('Available Models:')
-        for s in self.availableModels: print(s)
+        for s in sorted(self.availableModels): print(s)
 
     def ModelParams(self,model=None,allModels=False):
         '''display parameters of model'''
@@ -1555,12 +1556,13 @@ class TransitFit():
                     if ('Linear' not in model) and ('Power2' not in model):
                         s+='c2, '
                         if 'Nonlinear' in model: s+='c3, c4, '
+            if 'Gauss' in model: s+='t0, P, a, tC, w, '
             s+='p0, p1, p2'
             print(s)
 
         if model is None: model=self.model
         if allModels:
-            for m in self.availableModels: Display(m)
+            for m in sorted(self.availableModels): Display(m)
         else: Display(model)
 
 
@@ -1754,6 +1756,25 @@ class TransitFit():
 
         return flux
 
+    def Gauss(self,t,t0,P,A,tC,s,p):
+        '''model of minimum/maximum/eclipse using gaussian function
+        t - times of observations (np.array alebo float) [days]
+        t0 - time of reference minimum [days]
+        P - period [days]
+        tC - time of center of minimum [days]
+        A - amplitude of gaussian
+        s - width of gaussian [days]
+        p - 2nd order polynom coefficients (in list / np.array)
+        output in fluxes
+        '''
+
+        #TODO t0, P?
+
+        g=1+A*np.exp(-(t-tC)**2/s**2)
+
+        flux=g*np.polyval(p,t-t0)         #calculates light curve
+
+        return flux
 
     def PhaseCurve(self,P,t0,plot=False):
         '''create phase curve'''
@@ -2105,8 +2126,9 @@ class TransitFit():
                 else: err.append(str(float(err[-1])/year)) #error calculated
                 unit.append('yr')
             elif x[0]=='t': unit.append('JD')
-            elif x[0]=='e' or x[0]=='c' or x[0]=='p': unit.append('')
+            elif x[0]=='e' or x[0]=='c' or x[0]=='p' or x[0]=='A': unit.append('')
             elif x[0]=='w' or x[0]=='i': unit.append('deg')
+            elif x[0]=='s': unit.append('d')
             else: unit.append('NA!')
 
         #make blank line
@@ -2156,6 +2178,8 @@ class TransitFit():
             if 'R_err' in self.systemParams: R_err=self.systemParams['R_err']
 
         if R>0: self.AbsoluteParam(R,R_err)
+
+        #TODO - pre EB - fwhm, atd.
 
         #make blank line
         params.append('')
@@ -2228,6 +2252,7 @@ class TransitFit():
     def DepthDur(self):
         '''calculate depth and duration of transit'''
         output={}
+        if 'Transit' not in self.model: return output
         if 'Rp' not in self.params: return output
         self.paramsMore['delta']=self.params['Rp']**2
         output['delta']=self.paramsMore['delta']
@@ -2307,6 +2332,7 @@ class TransitFit():
     def AbsoluteParam(self,R,R_err=0):
         '''calculate absolute radius and semi-mayor axis of planet from radius of star'''
         output={}
+        if 'Transit' not in self.model: return output
         if 'Rp' not in self.params: return output
         self.paramsMore['a']=self.params['a']*R*rSun/au
         self.paramsMore['Rp']=self.params['Rp']*R*rSun/rJup
@@ -2349,6 +2375,9 @@ class TransitFit():
                         u.append(param['c4'])
 
             model=self.Transit(t,param['t0'],param['P'],param['Rp'],param['a'],param['i'],param['e'],param['w'],u,p)
+        if 'Gauss' in self.model:
+            model=self.Gauss(t,param['t0'],param['P'],param['A'],param['tC'],param['s'],p)
+
         return model
 
 
