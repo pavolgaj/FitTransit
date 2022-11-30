@@ -1677,6 +1677,10 @@ class TransitFit():
             else: mpl.plot(self.t,self.flux,fmt='bo',markersize=5,zorder=1)
             mpl.plot(self.t,pv,'r-',zorder=2)
             mpl.plot(self.t[i],np.polyval(p,self.t[i]-t0),'g.',zorder=2)
+            lims=mpl.ylim()
+            mpl.plot([part[0],part[0]],lims,'k--')
+            mpl.plot([part[1],part[1]],lims,'k--')
+            mpl.ylim(lims)
 
             fig1=mpl.figure()
             if self._set_err:
@@ -2401,13 +2405,108 @@ class TransitFit():
         self.err=err
         return err
 
+    def Plot0(self,name=None,no_plot=0,no_plot_err=0,eps=False,time_type='JD',
+              offset=2400000,trans=True,title=None,hours=False,weight=None,
+              trans_weight=False,bw=False,fig_size=None):
+        '''plotting original Light Curve
+        name - name of file to saving plot (if not given -> show graph)
+        no_plot - number of outlier point which will not be plot
+        no_plot_err - number of errorful point which will not be plot
+        eps - save also as eps file
+        time_type - type of JD in which is time (show in x label)
+        offset - offset of time
+        trans - transform time according to offset
+        hours - time in hours (except in days)
+        title - name of graph
+        weight - weight of data (shown as size of points)
+        trans_weight - transform weights to range (1,10)
+        with_res - common plot with residue
+        bw - Black&White plot
+        fig_size - custom figure size - e.g. (12,6)
 
-    #TODO!
+        warning: weights have to be in same order as input data!
+        '''
+
+        if fig_size:
+            fig=mpl.figure(figsize=fig_size)
+        else:
+            fig=mpl.figure()
+
+        #2 plots - for residue
+        ax1=fig.add_subplot(1,1,1)
+        ax1.yaxis.set_label_coords(-0.175,0.5)
+        ax1.ticklabel_format(useOffset=False)
+
+        l=''
+        if hours: l=' [h]'
+        #setting labels
+        if offset>0:
+            ax1.set_xlabel('Time ('+time_type+' - '+str(round(offset,2))+')'+l)
+            if not trans: offset=0
+            x=self.t-offset
+        else:
+            ax1.set_xlabel('Time ('+time_type+')'+l)
+            offset=0
+            x=self.t
+        if hours: k=24  #convert to hours
+        else: k=1
+        ax1.set_ylabel('Flux')
+
+        if title is not None: fig.suptitle(title,fontsize=20)
+
+        flux=np.array(self.flux)
+
+        #set weight
+        set_w=False
+        if weight is not None:
+            weight=np.array(weight)[self._order]
+            if trans_weight:
+                w_min=min(weight)
+                w_max=max(weight)
+                weight=9./(w_max-w_min)*(weight-w_min)+1
+            if weight.shape==self.t.shape:
+                w=[]
+                levels=[0,3,5,7.9,10]
+                size=[3,4,5,7]
+                for i in range(len(levels)-1):
+                    w.append(np.where((weight>levels[i])*(weight<=levels[i+1])))
+                w[-1]=np.append(w[-1],np.where(weight>levels[-1]))  #if some weight is bigger than max. level
+                set_w=True
+            else:
+                warnings.warn('Shape of "weight" is different to shape of "time". Weight will be ignore!')
+
+        errors=GetMax(abs(flux),no_plot)  #remove outlier points
+        if bw: color='k'
+        else: color='b'
+        if set_w:
+            #using weights
+            for i in range(len(w)):
+                ax1.plot(k*x[np.where(w[i])],
+                        flux[np.where(w[i])],color+'o',markersize=size[i],zorder=1)
+
+        else:
+            #without weight
+            if self._set_err:
+                #using errors
+                if self._corr_err: err=np.array(self._old_err)
+                else: err=np.array(self.err)
+                errors=np.append(errors,GetMax(err,no_plot_err))  #remove errorful points
+                ax1.errorbar(k*x,flux,yerr=err,fmt=color+'o',markersize=5,zorder=1)
+            else:
+                #without errors
+                ax1.plot(k*x,flux,color+'o',zorder=1)
+
+        if name is not None:
+            mpl.savefig(name+'.png')
+            if eps: mpl.savefig(name+'.eps')
+            mpl.close(fig)
+        return fig
+
     def Plot(self,name=None,no_plot=0,no_plot_err=0,params=None,eps=False,
              time_type='JD',offset=2400000,trans=True,center=True,title=None,hours=False,
              phase=False,weight=None,trans_weight=False,model2=False,with_res=False,
              bw=False,double_ax=False,legend=None,fig_size=None,detrend=False):
-        '''plotting original O-C with model O-C based on current parameters set
+        '''plotting original Light Curve with model based on current parameters set
         name - name of file to saving plot (if not given -> show graph)
         no_plot - number of outlier point which will not be plot
         no_plot_err - number of errorful point which will not be plot
@@ -2515,15 +2614,16 @@ class TransitFit():
             else:
                 warnings.warn('Shape of "weight" is different to shape of "time". Weight will be ignore!')
 
+        ii=np.arange(0,len(self.t),1)
         errors=GetMax(abs(model-flux),no_plot)  #remove outlier points
         if bw: color='k'
         else: color='b'
         if set_w:
             #using weights
-            #prim=np.delete(prim,np.where(np.in1d(prim,errors)))
+            ii=np.delete(ii,np.where(np.in1d(ii,errors)))
             for i in range(len(w)):
-                ax1.plot(k*x[np.where(w[i])],
-                        flux[np.where(w[i])],color+'o',markersize=size[i],label=legend[0],zorder=1)
+                ax1.plot(k*x[np.where(np.in1d(ii,w[i]))],
+                        flux[np.where(np.in1d(ii,w[i]))],color+'o',markersize=size[i],label=legend[0],zorder=1)
 
         else:
             #without weight
@@ -2534,14 +2634,14 @@ class TransitFit():
                 if detrend:
                     err/=np.polyval([params['p2'],params['p1'],params['p0']],self.t-params['t0'])
                 errors=np.append(errors,GetMax(err,no_plot_err))  #remove errorful points
-                #prim=np.delete(prim,np.where(np.in1d(prim,errors)))
-                ax1.errorbar(k*x,flux,yerr=err,fmt=color+'o',markersize=5,label=legend[0],zorder=1)
+                ii=np.delete(ii,np.where(np.in1d(ii,errors)))
+                ax1.errorbar(k*x[ii],flux[ii],yerr=err[ii],fmt=color+'o',markersize=5,label=legend[0],zorder=1)
             else:
                 #without errors
-                #prim=np.delete(prim,np.where(np.in1d(prim,errors)))
-                ax1.plot(k*x,flux,color+'o',label=legend[0],zorder=1)
+                ii=np.delete(ii,np.where(np.in1d(ii,errors)))
+                ax1.plot(k*x[ii],flux[ii],color+'o',label=legend[0],zorder=1)
 
-        #expand time interval for model O-C
+        #expand time interval for model LC
         if len(self.t)<1000:
             dt=(self.t[-1]-self.t[0])/1000.
             t1=np.linspace(self.t[0]-50*dt,self.t[-1]+50*dt,1100)
@@ -2584,7 +2684,7 @@ class TransitFit():
             #setting secound axis
             ax3=ax1.twiny()
             #generate plot to obtain correct axis in phase
-            #expand time interval for model O-C
+            #expand time interval for model LC
             if len(self.t)<1000:
                 dt=(self.t[-1]-self.t[0])/1000.
                 t1=np.linspace(self.t[0]-50*dt,self.t[-1]+50*dt,1100)
@@ -2616,42 +2716,37 @@ class TransitFit():
             mpl.subplots_adjust(hspace=.07)
             mpl.setp(ax1.get_xticklabels(),visible=False)
 
-        if name is None: mpl.show()
-        else:
+        if name is not None:
             mpl.savefig(name+'.png')
             if eps: mpl.savefig(name+'.eps')
             mpl.close(fig)
+        return fig
 
-    #TODO!
-    def PlotRes(self,name=None,no_plot=0,no_plot_err=0,params=None,eps=False,oc_min=True,
-                time_type='JD',offset=2400000,trans=True,title=None,epoch=False,
-                min_type=False,weight=None,trans_weight=False,bw=False,double_ax=False,
+    def PlotRes(self,name=None,no_plot=0,no_plot_err=0,params=None,eps=False,
+                time_type='JD',offset=2400000,trans=True,center=True,title=None,hours=False,
+                phase=False,weight=None,trans_weight=False,bw=False,double_ax=False,
                 fig_size=None):
-        '''plotting residue (new O-C)
+        '''plotting residual LC
         name - name of file to saving plot (if not given -> show graph)
         no_plot - count of outlier point which will not be plot
         no_plot_err - count of errorful point which will not be plot
         params - set of params of current model (if not given -> current parameters set)
         eps - save also as eps file
-        oc_min - O-C in minutes (if False - days)
         time_type - type of JD in which is time (show in x label)
         offset - offset of time
         trans - transform time according to offset
+        center - center to mid transit
+        hours - time in hours (except in days)
         title - name of graph
-        epoch - x axis in epoch
-        min_type - distinction of type of minimum
+        phase - x axis in phase
         weight - weight of data (shown as size of points)
         trans_weight - transform weights to range (1,10)
         bw - Black&White plot
-        double_ax - two axes -> time and epoch
+        double_ax - two axes -> time and phase
         fig_size - custom figure size - e.g. (12,6)
 
         warning: weights have to be in same order as input data!
         '''
-
-        if epoch:
-            if not len(self.epoch)==len(self.t):
-                raise NameError('Epoch not callculated! Run function "Epoch" before it.')
 
         if params is None: params=self.params
 
@@ -2661,43 +2756,41 @@ class TransitFit():
             fig=mpl.figure()
 
         ax1=fig.add_subplot(1,1,1)
-        ax1.yaxis.set_label_coords(-0.11,0.5)
+        ax1.yaxis.set_label_coords(-0.15,0.5)
+        ax1.ticklabel_format(useOffset=False)
+        ax1.yaxis.set_major_formatter(mtick.FormatStrFormatter('%.1g'))
 
+        self.Phase(params['t0'],params['P'])
+        l=''
+        if hours:
+            center=True
+            l=' [h]'
+        if center:
+            E=np.round((self.t-params['t0'])/params['P'])
+            E=E[len(E)//2]
+            offset=params['t0']+params['P']*E
         #setting labels
-        if epoch and not double_ax:
-            ax1.set_xlabel('Epoch')
-            x=self.epoch
+        if phase and not double_ax:
+            ax1.set_xlabel('Phase')
+            x=self.phase
         elif offset>0:
-            ax1.set_xlabel('Time ('+time_type+' - '+str(offset)+')')
+            ax1.set_xlabel('Time ('+time_type+' - '+str(round(offset,2))+')'+l)
             if not trans: offset=0
             x=self.t-offset
         else:
-            ax1.set_xlabel('Time ('+time_type+')')
+            ax1.set_xlabel('Time ('+time_type+')'+l)
             offset=0
             x=self.t
+        if hours: k=24  #convert to hours
+        else: k=1
+        ax1.set_ylabel('Residual Flux (%)')
 
-        if oc_min:
-            ax1.set_ylabel('Residue O - C (min)')
-            k=minutes
-        else:
-            ax1.set_ylabel('Residue O - C (d)')
-            k=1
         if title is not None:
             if double_ax: fig.subplots_adjust(top=0.85)
             fig.suptitle(title,fontsize=20)
 
         model=self.Model(self.t,params)
-        self.res=self.flux-model
-
-        #primary / secondary minimum
-        if min_type:
-            if not len(self.epoch)==len(self.t):
-                raise NameError('Epoch not callculated! Run function "Epoch" before it.')
-            prim=np.where(self._min_type==0)
-            sec=np.where(self._min_type==1)
-        else:
-            prim=np.arange(0,len(self.t),1)
-            sec=np.array([])
+        res=(self.flux-model)*100
 
         #set weight
         set_w=False
@@ -2718,24 +2811,16 @@ class TransitFit():
             else:
                 warnings.warn('Shape of "weight" is different to shape of "time". Weight will be ignore!')
 
-
-        errors=GetMax(abs(self.res),no_plot)  #remove outlier points
+        ii=np.arange(0,len(self.t),1)
+        errors=GetMax(abs(res),no_plot)  #remove outlier points
         if bw: color='k'
         else: color='b'
         if set_w:
             #using weights
-            prim=np.delete(prim,np.where(np.in1d(prim,errors)))
-            sec=np.delete(sec,np.where(np.in1d(sec,errors)))
-            if not len(prim)==0:
-                for i in range(len(w)):
-                    mpl.plot(x[prim[np.where(np.in1d(prim,w[i]))]],
-                             (self.res*k)[prim[np.where(np.in1d(prim,w[i]))]],color+'o',markersize=size[i])
-            if not len(sec)==0:
-                for i in range(len(w)):
-                    mpl.plot(x[sec[np.where(np.in1d(sec,w[i]))]],
-                             (self.res*k)[sec[np.where(np.in1d(sec,w[i]))]],color+'o',markersize=size[i],
-                             fillstyle='none',markeredgewidth=1,markeredgecolor=color)
-
+            ii=np.delete(ii,np.where(np.in1d(ii,errors)))
+            for i in range(len(w)):
+                ax1.plot(k*x[np.where(np.in1d(ii,w[i]))],
+                        res[np.where(np.in1d(ii,w[i]))],color+'o',markersize=size[i])
         else:
             #without weight
             if self._set_err:
@@ -2743,47 +2828,34 @@ class TransitFit():
                 if self._corr_err: err=self._old_err
                 else: err=self.err
                 errors=np.append(errors,GetMax(err,no_plot_err))  #remove errorful points
-                prim=np.delete(prim,np.where(np.in1d(prim,errors)))
-                sec=np.delete(sec,np.where(np.in1d(sec,errors)))
-                if not len(prim)==0:
-                    mpl.errorbar(x[prim],(self.res*k)[prim],yerr=(err*k)[prim],fmt=color+'o',markersize=5)
-                if not len(sec)==0:
-                    mpl.errorbar(x[sec],(self.res*k)[sec],yerr=(err*k)[sec],fmt=color+'o',markersize=5,
-                                 fillstyle='none',markeredgewidth=1,markeredgecolor=color)
-
+                ii=np.delete(ii,np.where(np.in1d(ii,errors)))
+                ax1.errorbar(k*x[ii],res[ii],yerr=err[ii]*100,fmt=color+'o',markersize=5)
             else:
                 #without errors
-                prim=np.delete(prim,np.where(np.in1d(prim,errors)))
-                sec=np.delete(sec,np.where(np.in1d(sec,errors)))
-                if not len(prim)==0:
-                    mpl.plot(x[prim],(self.res*k)[prim],color+'o')
-                if not len(sec)==0:
-                    mpl.plot(x[sec],(self.res*k)[sec],color+'o',
-                             mfc='none',markeredgewidth=1,markeredgecolor=color)
+                ii=np.delete(ii,np.where(np.in1d(ii,errors)))
+                ax1.plot(k*x[ii],res[ii],color+'o')
 
         if double_ax:
             #setting secound axis
-            if not len(self.epoch)==len(self.t):
-                raise NameError('Epoch not callculated! Run function "Epoch" before it.')
             ax2=ax1.twiny()
             #generate plot to obtain correct axis in epoch
-            l=ax2.plot(self.epoch,self.res*k)
-            ax2.set_xlabel('Epoch')
+            l=ax2.plot(k*x,res)
+            ax2.set_xlabel('Phase')
             l.pop(0).remove()
-            lims=np.array(ax1.get_xlim())
-            epoch=np.round((lims-self._t0P[0])/self._t0P[1]*2)/2.
-            ax2.set_xlim(epoch)
+            lims=np.array(ax1.get_xlim())/k+offset
+            print(lims)
+            ph=self.Phase(params['t0'],params['P'],lims)
+            ax2.set_xlim(ph)
 
-        if name is None: mpl.show()
-        else:
+        if name is not None:
             mpl.savefig(name+'.png')
             if eps: mpl.savefig(name+'.eps')
             mpl.close(fig)
+        return fig
 
 
-    #TODO!
     def SaveModel(self,name,t_min=None,t_max=None,n=1000,phase=False,params=None):
-        '''save model curve of transit to file
+        '''save model curve to file
         name - name of output file
         t_min - minimal value of time
         t_max - maximal value of time
@@ -2794,8 +2866,14 @@ class TransitFit():
 
         if params is None: params=self.params
 
-        #same interval of epoch like in plot
-        #TODO!
+        if phase:
+            #convert to times
+            if t_min is None or t_max is None:
+                raise TypeError('"t_min" or "t_max" is not given!')
+            t_min=params['t0']+params['P']*t_min
+            t_max=params['t0']+params['P']*t_max
+
+        #same interval of time like in plot
         if len(self.t)<1000: dt=50*(self.t[-1]-self.t[0])/1000.
         else: dt=0.05*(self.t[-1]-self.t[0])
 
@@ -2835,17 +2913,17 @@ class TransitFit():
             if self._corr_err: err=self._old_err
             else: err=self.err
             np.savetxt(f,np.column_stack((self.t,phase,res,err)),
-                       fmt=["%14.7f",'%8.5f',"%12.10f","%.10f"],delimiter="    ",
+                       fmt=["%14.7f",'%8.5f',"%13.10f","%.10f"],delimiter="    ",
                        header='Time'.ljust(12,' ')+'    '+'Phase'.ljust(10,' ')
-                       +'    '+'Residue'.ljust(10,' ')+'    Error')
+                       +'    '+'Residue'.ljust(13,' ')+'    Error')
         elif weight is not None:
             np.savetxt(f,np.column_stack((self.t,phase,res,np.array(weight)[self._order])),
-                       fmt=["%14.7f",'%8.5f',"%12.10f","%.10f"],delimiter="    ",
+                       fmt=["%14.7f",'%8.5f',"%13.10f","%.10f"],delimiter="    ",
                        header='Time'.ljust(12,' ')+'    '+'Phase'.ljust(10,' ')
-                       +'    '+'Residue'.ljust(12,' ')+'    Weight')
+                       +'    '+'Residue'.ljust(13,' ')+'    Weight')
         else:
             np.savetxt(f,np.column_stack((self.t,phase,res)),
-                       fmt=["%14.7f",'%8.5f',"%12.10f"],delimiter="    ",
+                       fmt=["%14.7f",'%8.5f',"%13.10f"],delimiter="    ",
                        header='Time'.ljust(12,' ')+'    '+'Phase'.ljust(10,' ')
                        +'    '+'Residue')
         f.close()
