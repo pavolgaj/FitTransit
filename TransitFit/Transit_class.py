@@ -112,7 +112,9 @@ class _NumpyEncoder(json.JSONEncoder):
 
 class TransitFit():
     '''class for fitting transits'''
-    availableModels=['TransitUniform','TransitLinear','TransitQuadratic','TransitSquareRoot','TransitLogarithmic','TransitExponential','TransitPower2','TransitNonlinear','Gauss']   #list of available models
+    availableModels=['TransitUniform','TransitLinear','TransitQuadratic','TransitSquareRoot',
+                     'TransitLogarithmic','TransitExponential','TransitPower2','TransitNonlinear',
+                     'Gauss','Lorentz']   #list of available models
 
     def __init__(self,t,flux,err=None):
         '''loading times, fluxes, (errors)'''
@@ -169,7 +171,7 @@ class TransitFit():
                     if ('Linear' not in model) and ('Power2' not in model):
                         s+='c2, '
                         if 'Nonlinear' in model: s+='c3, c4, '
-            if 'Gauss' in model: s+='A, tC, w, '
+            if 'Gauss' in model or 'Lorentz' in model: s+='A, tC, w, '
             s+='p0, p1, p2'
             print(s)
 
@@ -382,6 +384,22 @@ class TransitFit():
         g=1+A*np.exp(-(t-tC)**2/w**2)
 
         flux=g*np.polyval(p,t-tC)         #calculates light curve
+
+        return flux
+
+    def Lorentz(self,t,A,tC,w,p):
+        '''model of minimum/maximum/eclipse using lorentzian function / Cauchy curve
+        t - times of observations (np.array alebo float) [days]
+        tC - time of center of minimum [days]
+        A - amplitude of lorentzian
+        w - width of lorentzian [days]
+        p - 2nd order polynom coefficients (in list / np.array)
+        output in fluxes
+        '''
+
+        l=1+A*w**2/((t-tC)**2+w**2)
+
+        flux=l*np.polyval(p,t-tC)         #calculates light curve
 
         return flux
 
@@ -885,6 +903,29 @@ class TransitFit():
                 if self.paramsMore_err['T14']==0: del self.paramsMore_err['T14']
                 else: output['T14']=self.paramsMore_err['T14']
 
+        if self.model=='Lorentz':
+            self.paramsMore['FWHM']=2*self.params['w']
+
+            # duration -> when Lorentzian is on level of residual
+            res=self.flux-self.Model()
+            R=np.mean(np.abs(res))/np.abs(self.params['A'])*3
+            self.paramsMore['T14']=2*self.params['w']*np.sqrt((1-R)/R)
+            output['FWHM']=self.paramsMore['FWHM']
+            output['T14']=self.paramsMore['T14']
+
+            if len(self.params_err)>0:
+                #get error of params
+                if 'w' in self.params_err: w_err=self.params_err['w']
+                else: w_err=0
+
+                self.paramsMore_err['FWHM']=self.paramsMore['FWHM']*w_err/self.params['w']
+                self.paramsMore_err['T14']=self.paramsMore['T14']*w_err/self.params['w']
+                #if some errors = 0, del them; and return only non-zero errors
+                if self.paramsMore_err['FWHM']==0: del self.paramsMore_err['FWHM']
+                else: output['FWHM']=self.paramsMore_err['FWHM']
+                if self.paramsMore_err['T14']==0: del self.paramsMore_err['T14']
+                else: output['T14']=self.paramsMore_err['T14']
+
         return output
 
 
@@ -1014,8 +1055,10 @@ class TransitFit():
                         u.append(param['c4'])
 
             model=self.Transit(t,param['t0'],param['P'],param['Rp'],param['a'],param['i'],param['e'],param['w'],u,p)
-        if 'Gauss' in self.model:
+        elif 'Gauss' in self.model:
             model=self.Gauss(t,param['A'],param['tC'],param['w'],p)
+        elif 'Lorentz' in self.model:
+            model=self.Lorentz(t,param['A'],param['tC'],param['w'],p)
 
         return model
 
