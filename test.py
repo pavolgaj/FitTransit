@@ -55,7 +55,7 @@ tf.Plot0()
 
 tf.params=dict(param)
 tf.systemParams={'R':1.2,'R_err':0.1}
-tf.Phase(tf.params['t0'],tf.params['P'])
+#tf.Phase(tf.params['t0'],tf.params['P'])
 tf.Summary()
 
 tf.limits=limits
@@ -79,7 +79,7 @@ tf.Summary()
 #tf.Save('test')
 #tf.SaveModel('model.dat')
 #tf.SaveModel('phase.dat',t_min=-0.4,t_max=0.4,phase=True)
-tf.SaveRes('res.dat')
+#tf.SaveRes('res.dat')
 
 
 tf.Plot()
