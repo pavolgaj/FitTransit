@@ -34,6 +34,7 @@ import matplotlib.ticker as mtick
 import numpy as np
 
 from scipy.optimize._differentialevolution import DifferentialEvolutionSolver
+from scipy.special import voigt_profile
 
 try: import emcee
 except ModuleNotFoundError: warnings.warn('Module emcee not found! Using FitMC will not be possible!')
@@ -114,7 +115,7 @@ class TransitFit():
     '''class for fitting transits'''
     availableModels=['TransitUniform','TransitLinear','TransitQuadratic','TransitSquareRoot',
                      'TransitLogarithmic','TransitExponential','TransitPower2','TransitNonlinear',
-                     'Gauss','Lorentz']   #list of available models
+                     'Gauss','Lorentz','Voigt']   #list of available models
 
     def __init__(self,t,flux,err=None):
         '''loading times, fluxes, (errors)'''
@@ -172,6 +173,7 @@ class TransitFit():
                         s+='c2, '
                         if 'Nonlinear' in model: s+='c3, c4, '
             if 'Gauss' in model or 'Lorentz' in model: s+='A, tC, w, '
+            if 'Voigt' in model: s+='A, tC, wG, wL, '
             s+='p0, p1, p2'
             print(s)
 
@@ -381,7 +383,7 @@ class TransitFit():
         output in fluxes
         '''
 
-        g=1+A*np.exp(-(t-tC)**2/w**2)
+        g=1+A*np.exp(-(t-tC)**2/(2*w**2))
 
         flux=g*np.polyval(p,t-tC)         #calculates light curve
 
@@ -400,6 +402,23 @@ class TransitFit():
         l=1+A*w**2/((t-tC)**2+w**2)
 
         flux=l*np.polyval(p,t-tC)         #calculates light curve
+
+        return flux
+
+    def Voigt(self,t,A,tC,wG,wL,p):
+        '''model of minimum/maximum/eclipse using Voigt profile (Gauss&Lorentz)
+        t - times of observations (np.array alebo float) [days]
+        tC - time of center of minimum [days]
+        A - amplitude of Voight profile
+        wG - width of gaussian [days]
+        wL - width of lorentzian [days]
+        p - 2nd order polynom coefficients (in list / np.array)
+        output in fluxes
+        '''
+
+        v=1+A*voigt_profile(t-tC,wG,wL)/voigt_profile(0,wG,wL)
+
+        flux=v*np.polyval(p,t-tC)         #calculates light curve
 
         return flux
 
@@ -882,11 +901,42 @@ class TransitFit():
         '''calculate FWHM and other parameters for models of minima (Gauss etc.)'''
         output={}
         if 'Transit' in self.model: return output
+
+        def gauss(p='w'):
+            '''calculate FWHM of gaussian'''
+            fwhm=2*np.sqrt(2*np.log(2))*self.params[p]
+
+            if len(self.params_err)>0:
+                #get error of params
+                if p in self.params_err: w_err=self.params_err[p]
+                else: w_err=0
+
+                err=fwhm*w_err/self.params[p]
+            else: err=None
+
+            return fwhm,err
+
+        def lorentz(p='w'):
+            '''calculate FWHM of lorentzian'''
+            fwhm=2*self.params[p]
+
+            if len(self.params_err)>0:
+                #get error of params
+                if p in self.params_err: w_err=self.params_err[p]
+                else: w_err=0
+
+                err=fwhm*w_err/self.params[p]
+            else: err=None
+
+            return fwhm,err
+
+
         if self.model=='Gauss':
-            self.paramsMore['FWHM']=2*np.sqrt(np.log(2))*self.params['w']
+            fwhm,err=gauss()
+            self.paramsMore['FWHM']=fwhm
             # duration -> when Gaussian is on level of residual
             res=self.flux-self.Model()
-            self.paramsMore['T14']=2*np.sqrt(np.log(np.abs(self.params['A'])/np.mean(np.abs(res))))*self.params['w']
+            self.paramsMore['T14']=2*np.sqrt(2*np.log(np.abs(self.params['A'])/np.mean(np.abs(res))))*self.params['w']
             output['FWHM']=self.paramsMore['FWHM']
             output['T14']=self.paramsMore['T14']
 
@@ -895,16 +945,12 @@ class TransitFit():
                 if 'w' in self.params_err: w_err=self.params_err['w']
                 else: w_err=0
 
-                self.paramsMore_err['FWHM']=self.paramsMore['FWHM']*w_err/self.params['w']
+                self.paramsMore_err['FWHM']=err
                 self.paramsMore_err['T14']=self.paramsMore['T14']*w_err/self.params['w']
-                #if some errors = 0, del them; and return only non-zero errors
-                if self.paramsMore_err['FWHM']==0: del self.paramsMore_err['FWHM']
-                else: output['FWHM']=self.paramsMore_err['FWHM']
-                if self.paramsMore_err['T14']==0: del self.paramsMore_err['T14']
-                else: output['T14']=self.paramsMore_err['T14']
 
-        if self.model=='Lorentz':
-            self.paramsMore['FWHM']=2*self.params['w']
+        elif self.model=='Lorentz':
+            fwhm,err=lorentz()
+            self.paramsMore['FWHM']=fwhm
 
             # duration -> when Lorentzian is on level of residual
             res=self.flux-self.Model()
@@ -918,13 +964,38 @@ class TransitFit():
                 if 'w' in self.params_err: w_err=self.params_err['w']
                 else: w_err=0
 
-                self.paramsMore_err['FWHM']=self.paramsMore['FWHM']*w_err/self.params['w']
+                self.paramsMore_err['FWHM']=err
                 self.paramsMore_err['T14']=self.paramsMore['T14']*w_err/self.params['w']
-                #if some errors = 0, del them; and return only non-zero errors
-                if self.paramsMore_err['FWHM']==0: del self.paramsMore_err['FWHM']
-                else: output['FWHM']=self.paramsMore_err['FWHM']
-                if self.paramsMore_err['T14']==0: del self.paramsMore_err['T14']
-                else: output['T14']=self.paramsMore_err['T14']
+
+        elif self.model=='Voigt':
+            fG,errG=gauss('wG')
+            fL,errL=lorentz('wL')
+            sqrt=np.sqrt(0.2169*fL**2+fG**2)
+            self.paramsMore['FWHM']=0.5343*fL+sqrt
+            output['FWHM']=self.paramsMore['FWHM']
+            self.paramsMore['FWHM_Gauss']=fG
+            output['FWHM_Gauss']=self.paramsMore['FWHM_Gauss']
+            self.paramsMore['FWHM_Lorentz']=fL
+            output['FWHM_Lorentz']=self.paramsMore['FWHM_Lorentz']
+
+            if len(self.params_err)>0:
+                #get error of params
+                #if 'wG' in self.params_err: wG_err=self.params_err['wG']
+                #else: wG_err=0
+                #if 'wL' in self.params_err: wL_err=self.params_err['wL']
+                #else: wL_err=0
+
+                self.paramsMore_err['FWHM']=np.sqrt((0.5343+0.2169*fL/sqrt)**2*errL**2+(fG/sqrt)**2*errG**2)
+                self.paramsMore_err['FWHM_Gauss']=errG
+                self.paramsMore_err['FWHM_Lorentz']=errL
+
+
+        if len(self.paramsMore_err)>0:
+            #if some errors = 0, del them; and return only non-zero errors
+            keys=list(self.paramsMore_err.keys())
+            for p in keys:
+                if self.paramsMore_err[p]==0: del self.paramsMore_err[p]
+                else: output[p]=self.paramsMore_err[p]
 
         return output
 
@@ -999,13 +1070,12 @@ class TransitFit():
 
             self.paramsMore_err['T14']=errT(dur14=True)
             self.paramsMore_err['T23']=errT(dur14=False)
+
             #if some errors = 0, del them; and return only non-zero errors
-            if self.paramsMore_err['delta']==0: del self.paramsMore_err['delta']
-            else: output['delta_err']=self.paramsMore_err['delta']
-            if self.paramsMore_err['T14']==0: del self.paramsMore_err['T14']
-            else: output['T14_err']=self.paramsMore_err['T14']
-            if self.paramsMore_err['T23']==0: del self.paramsMore_err['T23']
-            else: output['T23_err']=self.paramsMore_err['T23']
+            keys=list(self.paramsMore_err.keys())
+            for p in keys:
+                if self.paramsMore_err[p]==0: del self.paramsMore_err[p]
+                else: output[p]=self.paramsMore_err[p]
 
         return output
 
@@ -1031,10 +1101,10 @@ class TransitFit():
             self.paramsMore_err['Rp']=self.paramsMore['Rp']*(r_err/self.params['Rp']+R_err/R)
 
             #if some errors = 0, del them; and return only non-zero errors
-            if self.paramsMore_err['a']==0: del self.paramsMore_err['a']
-            else: output['a_err']=self.paramsMore_err['a']
-            if self.paramsMore_err['Rp']==0: del self.paramsMore_err['Rp']
-            else: output['Rp_err']=self.paramsMore_err['Rp']
+            keys=list(self.paramsMore_err.keys())
+            for p in keys:
+                if self.paramsMore_err[p]==0: del self.paramsMore_err[p]
+                else: output[p]=self.paramsMore_err[p]
 
         return output
 
@@ -1059,6 +1129,8 @@ class TransitFit():
             model=self.Gauss(t,param['A'],param['tC'],param['w'],p)
         elif 'Lorentz' in self.model:
             model=self.Lorentz(t,param['A'],param['tC'],param['w'],p)
+        elif 'Voigt' in self.model:
+            model=self.Voigt(t,param['A'],param['tC'],param['wG'],param['wL'],p)
 
         return model
 
