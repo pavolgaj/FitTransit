@@ -115,7 +115,7 @@ class TransitFit():
     '''class for fitting transits'''
     availableModels=['TransitUniform','TransitLinear','TransitQuadratic','TransitSquareRoot',
                      'TransitLogarithmic','TransitExponential','TransitPower2','TransitNonlinear',
-                     'Gauss','Lorentz','Voigt']   #list of available models
+                     'Gauss','Lorentz','Voigt','Quad']   #list of available models
 
     def __init__(self,t,flux,err=None):
         '''loading times, fluxes, (errors)'''
@@ -172,7 +172,7 @@ class TransitFit():
                     if ('Linear' not in model) and ('Power2' not in model):
                         s+='c2, '
                         if 'Nonlinear' in model: s+='c3, c4, '
-            if 'Gauss' in model or 'Lorentz' in model: s+='A, tC, w, '
+            if 'Gauss' in model or 'Lorentz' in model or 'Quad' in model: s+='A, tC, w, '
             if 'Voigt' in model: s+='A, tC, wG, wL, '
             s+='p0, p1, p2'
             print(s)
@@ -421,6 +421,27 @@ class TransitFit():
         flux=v*np.polyval(p,t-tC)         #calculates light curve
 
         return flux
+
+    def Quad(self,t,A,tC,w,p):
+        '''model of minimum/maximum/eclipse using parabola
+        t - times of observations (np.array alebo float) [days]
+        tC - time of center of minimum [days]
+        A - amplitude
+        w - width
+        p - 2nd order polynom coefficients (in list / np.array)
+        output in fluxes
+        '''
+
+        quad=1+A+w*(t-tC)**2
+
+        quad[np.where(quad*np.sign(A)<np.sign(A))]=1  #replace part above/belove standard level (1)
+        # or quad[np.where(t-tC>np.sqrt(-A/w))]=1
+
+        flux=quad*np.polyval(p,t-tC)         #calculates light curve
+
+        return flux
+
+    #TODO 4th order poly
 
     def PhaseCurve(self,P,t0,plot=False):
         '''create phase curve'''
@@ -989,6 +1010,19 @@ class TransitFit():
                 self.paramsMore_err['FWHM_Gauss']=errG
                 self.paramsMore_err['FWHM_Lorentz']=errL
 
+        elif self.model=='Quad':
+            self.paramsMore['T14']=2*np.sqrt(-self.params['A']/self.params['w'])
+            output['T14']=self.paramsMore['T14']
+
+            if len(self.params_err)>0:
+                #get error of params
+                if 'w' in self.params_err: w_err=self.params_err['w']
+                else: w_err=0
+                if 'A' in self.params_err: A_err=self.params_err['A']
+                else: A_err=0
+
+                self.paramsMore_err['T14']=self.paramsMore['T14']*0.5*np.sqrt((A_err/self.params['A'])**2+(w_err/self.params['w'])**2)
+
 
         if len(self.paramsMore_err)>0:
             #if some errors = 0, del them; and return only non-zero errors
@@ -1131,6 +1165,8 @@ class TransitFit():
             model=self.Lorentz(t,param['A'],param['tC'],param['w'],p)
         elif 'Voigt' in self.model:
             model=self.Voigt(t,param['A'],param['tC'],param['wG'],param['wL'],p)
+        elif 'Quad' in self.model:
+            model=self.Quad(t,param['A'],param['tC'],param['w'],p)
 
         return model
 
