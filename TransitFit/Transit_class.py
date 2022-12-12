@@ -1316,8 +1316,8 @@ class TransitFit():
                 ax1.plot(k*x,flux,color+'o',zorder=1)
 
         if name is not None:
-            mpl.savefig(name+'.png')
-            if eps: mpl.savefig(name+'.eps')
+            mpl.savefig(name+'.png',bbox_inches='tight')
+            if eps: mpl.savefig(name+'.eps',bbox_inches='tight')
             mpl.close(fig)
         return fig
 
@@ -1549,8 +1549,8 @@ class TransitFit():
             mpl.setp(ax1.get_xticklabels(),visible=False)
 
         if name is not None:
-            mpl.savefig(name+'.png')
-            if eps: mpl.savefig(name+'.eps')
+            mpl.savefig(name+'.png',bbox_inches='tight')
+            if eps: mpl.savefig(name+'.eps',bbox_inches='tight')
             mpl.close(fig)
         return fig
 
@@ -1690,8 +1690,8 @@ class TransitFit():
             ax2.set_xlim(ph)
 
         if name is not None:
-            mpl.savefig(name+'.png')
-            if eps: mpl.savefig(name+'.eps')
+            mpl.savefig(name+'.png',bbox_inches='tight')
+            if eps: mpl.savefig(name+'.eps',bbox_inches='tight')
             mpl.close(fig)
         return fig
 

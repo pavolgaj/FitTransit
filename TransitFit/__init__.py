@@ -1,4 +1,4 @@
-from .Transit_class import TransitFit
+from .Transit_class import TransitFit, TransitFitLoad
 
 __version__='0.1.1'
 
