@@ -451,8 +451,10 @@ class TransitFit():
         flux=self.flux[order]
         if plot:
             mpl.figure()
-            if self._set_err: mpl.errorbar(f,flux,yerr=self.err,fmt='o')
-            else: mpl.plot(f,flux,'.')
+            f1=np.array(f)
+            f1[f1>0.5]-=1
+            if self._set_err: mpl.errorbar(f1,flux,yerr=self.err,fmt='o')
+            else: mpl.plot(f1,flux,'.')
         return f,flux
 
     def Chi2(self,params):
@@ -1472,12 +1474,18 @@ class TransitFit():
                 ax1.plot(k*x[ii],flux[ii],color+'o',label=legend[0],zorder=1)
 
         #expand time interval for model LC
-        if len(self.t)<1000:
-            dt=(self.t[-1]-self.t[0])/1000.
-            t1=np.linspace(self.t[0]-50*dt,self.t[-1]+50*dt,1100)
+        if phase and not double_ax:
+            tmin=self._t0P[0]+self._t0P[1]*np.min(self.phase)
+            tmax=self._t0P[0]+self._t0P[1]*np.max(self.phase)
         else:
-            dt=(self.t[-1]-self.t[0])/len(self.t)
-            t1=np.linspace(self.t[0]-0.05*len(self.t)*dt,self.t[-1]+0.05*len(self.t)*dt,int(1.1*len(self.t)))
+            tmin=self.t[0]
+            tmax=self.t[-1]
+        if len(self.t)<1000:
+            dt=(tmax-tmin)/1000.
+            t1=np.linspace(tmin-50*dt,tmax+50*dt,1100)
+        else:
+            dt=(tmax-tmin)/len(self.t)
+            t1=np.linspace(tmin-0.05*len(self.t)*dt,tmax+0.05*len(self.t)*dt,int(1.1*len(self.t)))
 
         if bw:
             color='k'
@@ -1491,7 +1499,9 @@ class TransitFit():
             model_long/=np.polyval([params['p2'],params['p1'],params['p0']],t1-t0)
 
         if phase and not double_ax:
-            ax1.plot(self.Phase(t0,P,t1),model_long,color,linewidth=lw,label=legend[1],zorder=2)
+            ph=self.Phase(t0,P,t1)
+            i=np.argsort(ph)
+            ax1.plot(ph[i],model_long[i],color,linewidth=lw,label=legend[1],zorder=2)
         else: ax1.plot(k*(t1-offset),model_long,color,linewidth=lw,label=legend[1],zorder=2)
 
         if model2:
