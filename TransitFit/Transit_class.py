@@ -115,7 +115,7 @@ class TransitFit():
     '''class for fitting transits'''
     availableModels=['TransitUniform','TransitLinear','TransitQuadratic','TransitSquareRoot',
                      'TransitLogarithmic','TransitExponential','TransitPower2','TransitNonlinear',
-                     'Gauss','Lorentz','Voigt','Quad']   #list of available models
+                     'Gauss','Lorentz','Voigt','Quad','Mikulasek']   #list of available models
 
     def __init__(self,t,flux,err=None):
         '''loading times, fluxes, (errors)'''
@@ -174,6 +174,7 @@ class TransitFit():
                         if 'Nonlinear' in model: s+='c3, c4, '
             if 'Gauss' in model or 'Lorentz' in model or 'Quad' in model: s+='A, tC, w, '
             if 'Voigt' in model: s+='A, tC, wG, wL, '
+            if 'Mikulasek' in model: s+='A, C, K, tC, w, g, '
             s+='p0, p1, p2'
             print(s)
 
@@ -441,7 +442,25 @@ class TransitFit():
 
         return flux
 
+
     #TODO 4th order poly
+
+    def Mikulasek(self,t,A,C,K,tC,w,g,p):
+        '''model of minimum/maximum/eclipse based on phenomenological model of Mikulasek (2015)
+        t - times of observations (np.array alebo float) [days]
+        tC - time of center of minimum [days]
+        A - amplitude
+        w - width
+        p - 2nd order polynom coefficients (in list / np.array)
+        output in fluxes
+        '''
+
+        mik=1+A*(1+C*((t-tC)/w)**2+K*((t-tC)/w)**4)*(1-(1-np.exp(1-np.cosh((t-tC)/w)))**g)
+
+        flux=mik*np.polyval(p,t-tC)         #calculates light curve
+
+        return flux
+
 
     def PhaseCurve(self,P,t0,plot=False):
         '''create phase curve'''
@@ -795,7 +814,7 @@ class TransitFit():
                 else: err.append(str(float(err[-1])/year)) #error calculated
                 unit.append('yr')
             elif x[0]=='t': unit.append('JD')
-            elif x[0]=='e' or x[0]=='c' or x[0]=='p' or x[0]=='A': unit.append('')
+            elif x[0] in 'ecpACKg': unit.append('')
             elif x[0]=='w':
                 if 'Transit' in self.model: unit.append('deg')
                 else: unit.append('d')
@@ -1025,6 +1044,18 @@ class TransitFit():
 
                 self.paramsMore_err['T14']=self.paramsMore['T14']*0.5*np.sqrt((A_err/self.params['A'])**2+(w_err/self.params['w'])**2)
 
+        elif self.model=='Mikulasek':
+            # duration -> when flux~0.999, 3rd derivation of Mikulasek function is zero
+            self.paramsMore['T14']=2*self.params['w']*np.arccosh(3)
+            output['T14']=self.paramsMore['T14']
+
+            if len(self.params_err)>0:
+                #get error of params
+                if 'w' in self.params_err: w_err=self.params_err['w']
+                else: w_err=0
+
+                self.paramsMore_err['T14']=self.paramsMore['T14']*w_err/self.params['w']
+
 
         if len(self.paramsMore_err)>0:
             #if some errors = 0, del them; and return only non-zero errors
@@ -1169,6 +1200,9 @@ class TransitFit():
             model=self.Voigt(t,param['A'],param['tC'],param['wG'],param['wL'],p)
         elif 'Quad' in self.model:
             model=self.Quad(t,param['A'],param['tC'],param['w'],p)
+
+        elif 'Mikulasek' in self.model:
+            model=self.Mikulasek(t,param['A'],param['C'],param['K'],param['tC'],param['w'],param['g'],p)
 
         return model
 
