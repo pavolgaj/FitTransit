@@ -115,7 +115,7 @@ class TransitFit():
     '''class for fitting transits'''
     availableModels=['TransitUniform','TransitLinear','TransitQuadratic','TransitSquareRoot',
                      'TransitLogarithmic','TransitExponential','TransitPower2','TransitNonlinear',
-                     'Gauss','Lorentz','Voigt','Quad','Mikulasek']   #list of available models
+                     'Gauss','Lorentz','Voigt','Quad','Poly4','Mikulasek']   #list of available models
 
     def __init__(self,t,flux,err=None):
         '''loading times, fluxes, (errors)'''
@@ -173,6 +173,7 @@ class TransitFit():
                         s+='c2, '
                         if 'Nonlinear' in model: s+='c3, c4, '
             if 'Gauss' in model or 'Lorentz' in model or 'Quad' in model: s+='A, tC, w, '
+            if 'Poly4' in model: s+='A, w2, w4, '
             if 'Voigt' in model: s+='A, tC, wG, wL, '
             if 'Mikulasek' in model: s+='A, C, K, tC, w, g, '
             s+='p0, p1, p2'
@@ -433,6 +434,9 @@ class TransitFit():
         output in fluxes
         '''
 
+        if A*w>0:
+            raise ValueError('Amplitude "A" and width "w" should have opposite signs!')
+
         quad=1+A+w*(t-tC)**2
 
         quad[np.where(quad*np.sign(A)<np.sign(A))]=1  #replace part above/belove standard level (1)
@@ -442,8 +446,27 @@ class TransitFit():
 
         return flux
 
+    def Poly4(self,t,A,tC,w2,w4,p):
+        '''model of minimum/maximum/eclipse using 4th order polynom
+        t - times of observations (np.array alebo float) [days]
+        tC - time of center of minimum [days]
+        A - amplitude
+        w2 - width of parabola
+        w4 - width of 4th order polynom
+        p - 2nd order polynom coefficients (in list / np.array)
+        output in fluxes
+        '''
 
-    #TODO 4th order poly
+        if A*w4>0:
+            raise ValueError('Amplitude "A" and width "w4" should have opposite signs!')
+
+        model=1+A+w2*(t-tC)**2+w4*(t-tC)**4
+
+        model[np.where(model*np.sign(A)<np.sign(A))]=1  #replace part above/belove standard level (1)
+
+        flux=model*np.polyval(p,t-tC)         #calculates light curve
+
+        return flux
 
     def Mikulasek(self,t,A,C,K,tC,w,g,p):
         '''model of minimum/maximum/eclipse based on phenomenological model of Mikulasek (2015)
@@ -1044,6 +1067,28 @@ class TransitFit():
 
                 self.paramsMore_err['T14']=self.paramsMore['T14']*0.5*np.sqrt((A_err/self.params['A'])**2+(w_err/self.params['w'])**2)
 
+        elif self.model=='Poly4':
+            A=self.params['A']
+            w2=self.params['w2']
+            w4=self.params['w4']
+            sqrt=np.sqrt((w2/(2*w4))**2-A/w4)
+            self.paramsMore['T14']=2*np.sqrt(sqrt-w2/(2*w4))
+            output['T14']=self.paramsMore['T14']
+
+            if len(self.params_err)>0:
+                #get error of params
+                if 'w2' in self.params_err: w2_err=self.params_err['w2']
+                else: w2_err=0
+                if 'w4' in self.params_err: w4_err=self.params_err['w4']
+                else: w4_err=0
+                if 'A' in self.params_err: A_err=self.params_err['A']
+                else: A_err=0
+
+                dA=1/sqrt
+                dw2=1/sqrt*w2/w4**2-1
+                dw4=1/sqrt*(2*A/w4-(w2/w4)**2)+w2/w4
+                self.paramsMore_err['T14']=1/self.paramsMore['T14']*1/w4*np.sqrt((dA*A_err)**2+(dw2*w2_err)**2+(dw4*w4_err)**2)
+
         elif self.model=='Mikulasek':
             # duration -> when flux~0.999, 3rd derivation of Mikulasek function is zero
             self.paramsMore['T14']=2*self.params['w']*np.arccosh(3)
@@ -1200,7 +1245,8 @@ class TransitFit():
             model=self.Voigt(t,param['A'],param['tC'],param['wG'],param['wL'],p)
         elif 'Quad' in self.model:
             model=self.Quad(t,param['A'],param['tC'],param['w'],p)
-
+        elif 'Poly4' in self.model:
+            model=self.Poly4(t,param['A'],param['tC'],param['w2'],param['w4'],p)
         elif 'Mikulasek' in self.model:
             model=self.Mikulasek(t,param['A'],param['C'],param['K'],param['tC'],param['w'],param['g'],p)
 
@@ -1400,11 +1446,13 @@ class TransitFit():
 
         if phase or double_ax or detrend or center:
             if not len(self.phase)==len(self.t):
-                if ('t0' in params) and ('P' in params): self.Phase(params['t0'],params['P'])
+                if (('t0' in params) or ('tC' in params)) and ('P' in params):
+                    self.Phase(params['t0'],params['P'])
                 else:
                     raise TypeError('Phase not callculated! Run function "Phase" before it.')
-            if ('t0' in params) and ('P' in params):
-                t0=params['t0']
+            if (('t0' in params) or ('tC' in params)) and ('P' in params):
+                if 't0' in params: t0=params['t0']
+                elif 'tC' in params: t0=params['tC']
                 P=params['P']
             else:
                 t0=self._t0P[0]
@@ -1628,11 +1676,13 @@ class TransitFit():
 
         if phase or double_ax or center:
             if not len(self.phase)==len(self.t):
-                if ('t0' in params) and ('P' in params): self.Phase(params['t0'],params['P'])
+                if (('t0' in params) or ('tC' in params)) and ('P' in params):
+                    self.Phase(params['t0'],params['P'])
                 else:
                     raise TypeError('Phase not callculated! Run function "Phase" before it.')
-            if ('t0' in params) and ('P' in params):
-                t0=params['t0']
+            if (('t0' in params) or ('tC' in params)) and ('P' in params):
+                if 't0' in params: t0=params['t0']
+                elif 'tC' in params: t0=params['tC']
                 P=params['P']
             else:
                 t0=self._t0P[0]
