@@ -1307,7 +1307,7 @@ class TransitFit():
         return err
 
     def Plot0(self,name=None,no_plot=0,no_plot_err=0,eps=False,time_type='JD',
-              offset=2400000,trans=True,title=None,hours=False,weight=None,
+              offset=2400000,trans=True,title=None,hours=False,mag=False,weight=None,
               trans_weight=False,bw=False,fig_size=None):
         '''plotting original Light Curve
         name - name of file to saving plot (if not given -> show graph)
@@ -1319,6 +1319,7 @@ class TransitFit():
         trans - transform time according to offset
         hours - time in hours (except in days)
         title - name of graph
+        mag - y axis in magnitude
         weight - weight of data (shown as size of points)
         trans_weight - transform weights to range (1,10)
         with_res - common plot with residue
@@ -1351,7 +1352,10 @@ class TransitFit():
             x=self.t
         if hours: k=24  #convert to hours
         else: k=1
-        ax1.set_ylabel('Flux')
+        if mag:
+            ax1.set_ylabel('Rel. Magnitude')
+            ax1.invert_yaxis()
+        else: ax1.set_ylabel('Flux')
 
         if title is not None: fig.suptitle(title,fontsize=20)
 
@@ -1379,6 +1383,9 @@ class TransitFit():
         errors=GetMax(abs(flux),no_plot)  #remove outlier points
         if bw: color='k'
         else: color='b'
+        if mag:
+            flux=-2.5*np.log10(flux)
+
         if set_w:
             #using weights
             for i in range(len(w)):
@@ -1391,6 +1398,7 @@ class TransitFit():
                 #using errors
                 if self._corr_err: err=np.array(self._old_err)
                 else: err=np.array(self.err)
+                if mag: err=1.0857*err/10**(-flux/2.5)
                 errors=np.append(errors,GetMax(err,no_plot_err))  #remove errorful points
                 ax1.errorbar(k*x,flux,yerr=err,fmt=color+'o',markersize=5,zorder=1)
             else:
@@ -1405,7 +1413,7 @@ class TransitFit():
 
     def Plot(self,name=None,no_plot=0,no_plot_err=0,params=None,eps=False,
              time_type='JD',offset=2400000,trans=True,center=True,title=None,hours=False,
-             phase=False,weight=None,trans_weight=False,model2=False,with_res=False,
+             phase=False,mag=False,weight=None,trans_weight=False,model2=False,with_res=False,
              bw=False,double_ax=False,legend=None,fig_size=None,detrend=False):
         '''plotting original Light Curve with model based on current parameters set
         name - name of file to saving plot (if not given -> show graph)
@@ -1420,6 +1428,7 @@ class TransitFit():
         hours - time in hours (except in days)
         title - name of graph
         phase - x axis in phase
+        mag - y axis in magnitude
         weight - weight of data (shown as size of points)
         trans_weight - transform weights to range (1,10)
         model2 - plot 2 models - current params set and set given in "params"
@@ -1496,7 +1505,10 @@ class TransitFit():
             x=self.t
         if hours: k=24  #convert to hours
         else: k=1
-        if detrend: ax1.set_ylabel('Norm. Flux')
+        if mag:
+            ax1.set_ylabel('Rel. Magnitude')
+            ax1.invert_yaxis()
+        elif detrend: ax1.set_ylabel('Norm. Flux')
         else: ax1.set_ylabel('Flux')
 
         if title is not None:
@@ -1532,6 +1544,12 @@ class TransitFit():
         errors=GetMax(abs(model-flux),no_plot)  #remove outlier points
         if bw: color='k'
         else: color='b'
+
+        if mag:
+            flux=-2.5*np.log10(flux)
+            model=-2.5*np.log10(model)
+            res=flux-model
+
         if set_w:
             #using weights
             ii=np.delete(ii,np.where(np.in1d(ii,errors)))
@@ -1547,6 +1565,7 @@ class TransitFit():
                 else: err=np.array(self.err)
                 if detrend:
                     err/=np.polyval([params['p2'],params['p1'],params['p0']],self.t-t0)
+                if mag: err=1.0857*err/10**(-flux/2.5)
                 errors=np.append(errors,GetMax(err,no_plot_err))  #remove errorful points
                 ii=np.delete(ii,np.where(np.in1d(ii,errors)))
                 ax1.errorbar(k*x[ii],flux[ii],yerr=err[ii],fmt=color+'o',markersize=5,label=legend[0],zorder=1)
@@ -1579,6 +1598,7 @@ class TransitFit():
         model_long=self.Model(t1,params)
         if detrend:
             model_long/=np.polyval([params['p2'],params['p1'],params['p0']],t1-t0)
+        if mag: model_long=-2.5*np.log10(model_long)
 
         if phase and not double_ax:
             ph=self.Phase(t0,P,t1)
@@ -1597,6 +1617,7 @@ class TransitFit():
             model_set=self.Model(t1,params_model)
             if detrend:
                 model_set/=np.polyval([params['p2'],params['p1'],params['p0']],t1-t0)
+            if mag: model_set=-2.5*np.log10(model_set)
 
             if phase and not double_ax:
                 ax1.plot(self.Phase(t0,P,t1),model_set,color+lt,linewidth=lw,label=legend[2],zorder=3)
