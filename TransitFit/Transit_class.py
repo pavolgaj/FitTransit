@@ -1345,7 +1345,8 @@ class TransitFit():
         if hours: k=24  #convert to hours
         else: k=1
         if mag:
-            ax1.set_ylabel('Rel. Magnitude')
+            if 'mag' in self.systemParams: ax1.set_ylabel('Magnitude')
+            else: ax1.set_ylabel('Rel. Magnitude')
             ax1.invert_yaxis()
         else: ax1.set_ylabel('Flux')
 
@@ -1379,6 +1380,7 @@ class TransitFit():
         else: color='b'
         if mag:
             flux=-2.5*np.log10(flux)
+            if 'mag' in self.systemParams: flux+=self.systemParams['mag']
 
         if set_w:
             #using weights
@@ -1392,7 +1394,10 @@ class TransitFit():
                 #using errors
                 if self._corr_err: err=np.array(self._old_err)
                 else: err=np.array(self.err)
-                if mag: err=1.0857*err/10**(-flux/2.5)
+                if mag:
+                    m0=0
+                    if 'mag' in self.systemParams: m0=self.systemParams['mag']
+                    err=1.0857*err/10**(-(flux-m0)/2.5)
                 if no_plot_err>0: errors=np.append(errors,np.argsort(abs(err))[-no_plot_err:])  #remove errorful points
                 ii=np.delete(ii,np.where(np.in1d(ii,errors)))
                 ax1.errorbar(k*x[ii],flux[ii],yerr=err[ii],fmt=color+'o',markersize=5,zorder=1)
@@ -1501,7 +1506,8 @@ class TransitFit():
         if hours: k=24  #convert to hours
         else: k=1
         if mag:
-            ax1.set_ylabel('Rel. Magnitude')
+            if 'mag' in self.systemParams: ax1.set_ylabel('Magnitude')
+            else: ax1.set_ylabel('Rel. Magnitude')
             ax1.invert_yaxis()
         elif detrend: ax1.set_ylabel('Norm. Flux')
         else: ax1.set_ylabel('Flux')
@@ -1545,6 +1551,9 @@ class TransitFit():
             flux=-2.5*np.log10(flux)
             model=-2.5*np.log10(model)
             res=flux-model
+            if 'mag' in self.systemParams:
+                flux+=self.systemParams['mag']
+                model+=self.systemParams['mag']
 
         if set_w:
             #using weights
@@ -1561,7 +1570,10 @@ class TransitFit():
                 else: err=np.array(self.err)
                 if detrend:
                     err/=np.polyval([params['p2'],params['p1'],params['p0']],self.t-t0)
-                if mag: err=1.0857*err/10**(-flux/2.5)
+                if mag:
+                    m0=0
+                    if 'mag' in self.systemParams: m0=self.systemParams['mag']
+                    err=1.0857*err/10**(-(flux-m0)/2.5)
                 if no_plot_err>0: errors=np.append(errors,np.argsort(abs(err))[-no_plot_err:])  #remove errorful points
                 ii=np.delete(ii,np.where(np.in1d(ii,errors)))
                 ax1.errorbar(k*x[ii],flux[ii],yerr=err[ii],fmt=color+'o',markersize=5,label=legend[0],zorder=1)
@@ -1594,7 +1606,9 @@ class TransitFit():
         model_long=self.Model(t1,params)
         if detrend:
             model_long/=np.polyval([params['p2'],params['p1'],params['p0']],t1-t0)
-        if mag: model_long=-2.5*np.log10(model_long)
+        if mag:
+            model_long=-2.5*np.log10(model_long)
+            if 'mag' in self.systemParams: model_long+=self.systemParams['mag']
 
         if phase and not double_ax:
             ph=self.Phase(t0,P,t1)
@@ -1613,7 +1627,9 @@ class TransitFit():
             model_set=self.Model(t1,params_model)
             if detrend:
                 model_set/=np.polyval([params['p2'],params['p1'],params['p0']],t1-t0)
-            if mag: model_set=-2.5*np.log10(model_set)
+            if mag:
+                model_set=-2.5*np.log10(model_set)
+                if 'mag' in self.systemParams: model_set+=self.systemParams['mag']
 
             if phase and not double_ax:
                 ax1.plot(self.Phase(t0,P,t1),model_set,color+lt,linewidth=lw,label=legend[2],zorder=3)

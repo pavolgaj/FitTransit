@@ -54,7 +54,7 @@ param['p2']=0
 tf.Plot0()
 
 tf.params=dict(param)
-tf.systemParams={'R':1.2,'R_err':0.1}
+tf.systemParams={'R':1.2,'R_err':0.1,'mag':8.76}
 #tf.Phase(tf.params['t0'],tf.params['P'])
 tf.Summary()
 
