@@ -56,14 +56,6 @@ rSun=695700000   #radius of Sun in meters
 rJup=69911000     #radius of Jupiter in meters
 rEarth=6371000    #radius of Earth in meters
 
-def GetMax(x,n):
-    '''return n max values in array x'''
-    temp=[]
-    x=np.array(x)
-    for i in range(n):
-        temp.append(np.argmax(x))
-        x[temp[-1]]=0
-    return np.array(temp)
 
 class _Prior(object):
     '''set uniform prior with limits'''
@@ -1380,7 +1372,9 @@ class TransitFit():
             else:
                 warnings.warn('Shape of "weight" is different to shape of "time". Weight will be ignore!')
 
-        errors=GetMax(abs(flux),no_plot)  #remove outlier points
+        ii=np.arange(0,len(self.t),1)
+        if no_plot>0: errors=np.argsort(abs(flux-np.mean(flux)))[-no_plot:]   #remove outlier points
+        else: errors=np.array([])
         if bw: color='k'
         else: color='b'
         if mag:
@@ -1399,11 +1393,12 @@ class TransitFit():
                 if self._corr_err: err=np.array(self._old_err)
                 else: err=np.array(self.err)
                 if mag: err=1.0857*err/10**(-flux/2.5)
-                errors=np.append(errors,GetMax(err,no_plot_err))  #remove errorful points
-                ax1.errorbar(k*x,flux,yerr=err,fmt=color+'o',markersize=5,zorder=1)
+                if no_plot_err>0: errors=np.append(errors,np.argsort(abs(err))[-no_plot_err:])  #remove errorful points
+                ii=np.delete(ii,np.where(np.in1d(ii,errors)))
+                ax1.errorbar(k*x[ii],flux[ii],yerr=err[ii],fmt=color+'o',markersize=5,zorder=1)
             else:
                 #without errors
-                ax1.plot(k*x,flux,color+'o',zorder=1)
+                ax1.plot(k*x[ii],flux[ii],color+'o',zorder=1)
 
         if name is not None:
             mpl.savefig(name+'.png',bbox_inches='tight')
@@ -1541,7 +1536,8 @@ class TransitFit():
                 warnings.warn('Shape of "weight" is different to shape of "time". Weight will be ignore!')
 
         ii=np.arange(0,len(self.t),1)
-        errors=GetMax(abs(model-flux),no_plot)  #remove outlier points
+        if no_plot>0: errors=np.argsort(abs(model-flux))[-no_plot:]   #remove outlier points
+        else: errors=np.array([])
         if bw: color='k'
         else: color='b'
 
@@ -1566,7 +1562,7 @@ class TransitFit():
                 if detrend:
                     err/=np.polyval([params['p2'],params['p1'],params['p0']],self.t-t0)
                 if mag: err=1.0857*err/10**(-flux/2.5)
-                errors=np.append(errors,GetMax(err,no_plot_err))  #remove errorful points
+                if no_plot_err>0: errors=np.append(errors,np.argsort(abs(err))[-no_plot_err:])  #remove errorful points
                 ii=np.delete(ii,np.where(np.in1d(ii,errors)))
                 ax1.errorbar(k*x[ii],flux[ii],yerr=err[ii],fmt=color+'o',markersize=5,label=legend[0],zorder=1)
             else:
@@ -1770,7 +1766,8 @@ class TransitFit():
                 warnings.warn('Shape of "weight" is different to shape of "time". Weight will be ignore!')
 
         ii=np.arange(0,len(self.t),1)
-        errors=GetMax(abs(res),no_plot)  #remove outlier points
+        if no_plot>0: errors=np.argsort(abs(res))[-no_plot:]   #remove outlier points
+        else: errors=np.array([])
         if bw: color='k'
         else: color='b'
         if set_w:
@@ -1785,7 +1782,7 @@ class TransitFit():
                 #using errors
                 if self._corr_err: err=self._old_err
                 else: err=self.err
-                errors=np.append(errors,GetMax(err,no_plot_err))  #remove errorful points
+                if no_plot_err>0: errors=np.append(errors,np.argsort(abs(err))[-no_plot_err:])  #remove errorful points
                 ii=np.delete(ii,np.where(np.in1d(ii,errors)))
                 ax1.errorbar(k*x[ii],res[ii],yerr=err[ii]*100,fmt=color+'o',markersize=5)
             else:
