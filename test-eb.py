@@ -7,6 +7,7 @@ from scipy.special import voigt_profile
 
 t0=2.4e6
 P=15
+mag0=8.76
 param={'A':-0.2,'tC':t0+45,'C':-0.2,'K':0.1,'g':2.5,'w':0.05,'wG':0.05,'wL':0.02,'w2':2,'w4':85,'p0':1,'p1':0.1,'p2':0}
 #param={'t0':t0,'P':15,'A':-0.2,'tC':t0+45,'s':0.05,'p0':-2024,'p1':90,'p2':-1}
 #param={'t0':t0,'P':15,'A':-0.2,'tC':t0+45,'s':0.05,'p0':-2046.5,'p1':90.5,'p2':-1}
@@ -38,6 +39,10 @@ flux=flux0+5e-3*np.random.normal(size=t.shape)*np.mean(pp)
 err=5e-3*np.ones(t.shape)*np.mean(pp)
 
 
+mag,errm=TransitFit.flux2mag(flux,err,mag0)
+flux1,err1=TransitFit.mag2flux(mag,errm,mag0)
+
+
 tf=TransitFit.TransitFit(t,flux,err)
 
 tf.Plot0()
@@ -51,7 +56,7 @@ tf.Plot0()
 
 tf.model='Gauss'
 tf.params=dict(param)
-tf.systemParams={'R':1.2,'R_err':0.1,'mag':8.76}
+tf.systemParams={'R':1.2,'R_err':0.1,'mag':mag0}
 tf.Phase(t0,P)
 #tf.Plot()
 tf.Summary()

@@ -102,6 +102,34 @@ class _NumpyEncoder(json.JSONEncoder):
 
         return json.JSONEncoder.default(self, obj)
 
+def mag2flux(mag,err=None,mag0=0):
+    '''convert magnitude to "normalized" flux
+    mag - star magnitude (numpy.array or float)
+    err - errors/uncertanties (same format as mag)
+    mag0 - standard level of star magnitude (for flux=1)
+    '''
+
+    flux=10**(-(mag-mag0)/2.5)
+    if err is None: return flux
+
+    err=np.log(10)/2.5*err*flux
+    return flux,err
+
+
+def flux2mag(flux,err=None,mag0=0):
+    '''convert normalized flux to magnitude
+    flux - normalized flux (numpy.array or float)
+    err - errors/uncertanties (same format as flux)
+    mag0 - standard level of star magnitude (for flux=1)
+    '''
+
+    mag=mag0-2.5*np.log10(flux)
+    if err is None: return mag
+
+    err=2.5/np.log(10)*err/flux
+    return mag,err
+
+
 
 class TransitFit():
     '''class for fitting transits'''
@@ -116,7 +144,7 @@ class TransitFit():
         if err is None:
             #if unknown (not given) errors of data
             #note: should cause wrong performance of fitting using MC, rather use function CalcErr for obtained errors after GA fitting
-            self.err=np.ones(self.t.shape)/1440.
+            self.err=0.1*np.ones(self.t.shape)
             self._set_err=False
             warnings.warn('Not given reliable errors of input data should cause wrong performance of fitting using MC! Use function CalcErr for obtained errors after GA fitting.')
         else:
@@ -287,7 +315,7 @@ class TransitFit():
             fig=mpl.figure()
             if self._set_err:
                 mpl.errorbar(self.t,self.flux,yerr=self.err,fmt='bo',markersize=5,zorder=1)
-            else: mpl.plot(self.t,self.flux,fmt='bo',markersize=5,zorder=1)
+            else: mpl.plot(self.t,self.flux,'bo',markersize=5,zorder=1)
             mpl.plot(self.t,pv,'r-',zorder=2)
             mpl.plot(self.t[i],np.polyval(p,self.t[i]-t0),'g.',zorder=2)
             lims=mpl.ylim()
@@ -298,8 +326,10 @@ class TransitFit():
             fig1=mpl.figure()
             if self._set_err:
                 mpl.errorbar(self.t,flux,yerr=err,fmt='bo',markersize=5,zorder=1)
-            else: mpl.plot(self.t,flux,fmt='bo',markersize=5,zorder=1)
+            else: mpl.plot(self.t,flux,'bo',markersize=5,zorder=1)
 
+        if not (self._set_err or self._calc_err or self._corr_err):
+            err=0.1*np.ones(self.t.shape)
 
         if rewrite:
             self.flux=flux
@@ -1397,7 +1427,7 @@ class TransitFit():
                 if mag:
                     m0=0
                     if 'mag' in self.systemParams: m0=self.systemParams['mag']
-                    err=1.0857*err/10**(-(flux-m0)/2.5)
+                    err=2.5/np.log(10)*err/10**(-(flux-m0)/2.5)
                 if no_plot_err>0: errors=np.append(errors,np.argsort(abs(err))[-no_plot_err:])  #remove errorful points
                 ii=np.delete(ii,np.where(np.in1d(ii,errors)))
                 ax1.errorbar(k*x[ii],flux[ii],yerr=err[ii],fmt=color+'o',markersize=5,zorder=1)
@@ -1573,7 +1603,7 @@ class TransitFit():
                 if mag:
                     m0=0
                     if 'mag' in self.systemParams: m0=self.systemParams['mag']
-                    err=1.0857*err/10**(-(flux-m0)/2.5)
+                    err=2.5/np.log(10)*err/10**(-(flux-m0)/2.5)
                 if no_plot_err>0: errors=np.append(errors,np.argsort(abs(err))[-no_plot_err:])  #remove errorful points
                 ii=np.delete(ii,np.where(np.in1d(ii,errors)))
                 ax1.errorbar(k*x[ii],flux[ii],yerr=err[ii],fmt=color+'o',markersize=5,label=legend[0],zorder=1)
