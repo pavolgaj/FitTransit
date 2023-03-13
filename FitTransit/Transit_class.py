@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
-#main classes of TransitFit package
+#main classes of FitTransit package
 #version 0.1.1
-#update: ?.?.2022
-# (c) Pavol Gajdos, 2022
+#update: 9.2.2023
+# (c) Pavol Gajdos, 2022-2023
 
 from time import time
 import sys
@@ -131,7 +131,7 @@ def flux2mag(flux,err=None,mag0=0):
 
 
 
-class TransitFit():
+class FitTransit():
     '''class for fitting transits'''
     availableModels=['TransitUniform','TransitLinear','TransitQuadratic','TransitSquareRoot',
                      'TransitLogarithmic','TransitExponential','TransitPower2','TransitNonlinear',
@@ -1947,8 +1947,8 @@ class TransitFit():
 
 
 
-class TransitFitLoad(TransitFit):
-    '''loading saved data, model... from TransitFit class'''
+class FitTransitLoad(FitTransit):
+    '''loading saved data, model... from FitTransit class'''
     def __init__(self,path):
         '''loading data, model, parameters... from file'''
         super().__init__([0],[0],[0])

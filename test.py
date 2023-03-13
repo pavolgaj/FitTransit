@@ -1,4 +1,4 @@
-import TransitFit
+import FitTransit
 import numpy as np
 import matplotlib.pyplot as mpl
 import batman
@@ -42,7 +42,7 @@ flux=flux0+1e-5*np.random.normal(size=t.shape)*np.mean(pp)
 err=1e-5*np.ones(t.shape)*np.mean(pp)
 
 
-tf=TransitFit.TransitFit(t,flux,err)
+tf=FitTransit.FitTransit(t,flux,err)
 
 tf.Plot0()
 

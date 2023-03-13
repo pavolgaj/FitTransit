@@ -1,4 +1,4 @@
-import TransitFit
+import FitTransit
 import numpy as np
 import matplotlib.pyplot as mpl
 
@@ -39,11 +39,11 @@ flux=flux0+5e-3*np.random.normal(size=t.shape)*np.mean(pp)
 err=5e-3*np.ones(t.shape)*np.mean(pp)
 
 
-mag,errm=TransitFit.flux2mag(flux,err,mag0)
-flux1,err1=TransitFit.mag2flux(mag,errm,mag0)
+mag,errm=FitTransit.flux2mag(flux,err,mag0)
+flux1,err1=FitTransit.mag2flux(mag,errm,mag0)
 
 
-tf=TransitFit.TransitFit(t,flux,err)
+tf=FitTransit.FitTransit(t,flux,err)
 
 tf.Plot0()
 
