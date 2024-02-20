@@ -135,7 +135,7 @@ class FitTransit():
     '''class for fitting transits'''
     availableModels=['TransitUniform','TransitLinear','TransitQuadratic','TransitSquareRoot',
                      'TransitLogarithmic','TransitExponential','TransitPower2','TransitNonlinear',
-                     'Gauss','Lorentz','Voigt','Quad','Poly4','Mikulasek']   #list of available models
+                     'Gauss','GaussModif','Lorentz','Voigt','Quad','Poly4','Mikulasek']   #list of available models
 
     def __init__(self,t,flux,err=None):
         '''loading times, fluxes, (errors)'''
@@ -193,6 +193,7 @@ class FitTransit():
                         s+='c2, '
                         if 'Nonlinear' in model: s+='c3, c4, '
             if 'Gauss' in model or 'Lorentz' in model or 'Quad' in model: s+='A, tC, w, '
+            if 'Modif' in model: s+='k, '
             if 'Poly4' in model: s+='A, w2, w4, '
             if 'Voigt' in model: s+='A, tC, wG, wL, '
             if 'Mikulasek' in model: s+='A, C, K, tC, w, g, '
@@ -413,6 +414,26 @@ class FitTransit():
 
         return flux
 
+    def GaussModif(self,t,A,tC,w,k,p):
+        '''model of minimum/maximum/eclipse using modificated gaussian function
+        t - times of observations (np.array alebo float) [days]
+        tC - time of center of minimum [days]
+        A - amplitude of gaussian
+        w - width of gaussian [days]
+        k - exponent
+        p - 2nd order polynom coefficients (in list / np.array)
+        output in fluxes
+        '''
+
+        if k<=0:
+            raise ValueError('Exponent "k" should be possitive!')
+
+        g=1+A*np.exp(-np.abs(t-tC)**k/(k*w**k))
+
+        flux=g*np.polyval(p,t-tC)         #calculates light curve
+
+        return flux
+
     def Lorentz(self,t,A,tC,w,p):
         '''model of minimum/maximum/eclipse using lorentzian function / Cauchy curve
         t - times of observations (np.array alebo float) [days]
@@ -495,7 +516,9 @@ class FitTransit():
         t - times of observations (np.array alebo float) [days]
         tC - time of center of minimum [days]
         A - amplitude
+        C,K - correcting parameters
         w - width
+        g - kurtosis
         p - 2nd order polynom coefficients (in list / np.array)
         output in fluxes
         '''
@@ -1259,17 +1282,19 @@ class FitTransit():
                         u.append(param['c4'])
 
             model=self.Transit(t,param['t0'],param['P'],param['Rp'],param['a'],param['i'],param['e'],param['w'],u,p)
-        elif 'Gauss' in self.model:
+        elif self.model=='Gauss':
             model=self.Gauss(t,param['A'],param['tC'],param['w'],p)
-        elif 'Lorentz' in self.model:
+        elif self.model=='GaussModif':
+            model=self.GaussModif(t,param['A'],param['tC'],param['w'],param['k'],p)
+        elif self.model=='Lorentz':
             model=self.Lorentz(t,param['A'],param['tC'],param['w'],p)
-        elif 'Voigt' in self.model:
+        elif self.model=='Voigt':
             model=self.Voigt(t,param['A'],param['tC'],param['wG'],param['wL'],p)
-        elif 'Quad' in self.model:
+        elif self.model=='Quad':
             model=self.Quad(t,param['A'],param['tC'],param['w'],p)
-        elif 'Poly4' in self.model:
+        elif self.model=='Poly4':
             model=self.Poly4(t,param['A'],param['tC'],param['w2'],param['w4'],p)
-        elif 'Mikulasek' in self.model:
+        elif self.model=='Mikulasek':
             model=self.Mikulasek(t,param['A'],param['C'],param['K'],param['tC'],param['w'],param['g'],p)
 
         return model
