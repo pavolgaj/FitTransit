@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
 #main classes of FitTransit package
-#version 0.1.1
-#update: 9.2.2023
-# (c) Pavol Gajdos, 2022-2023
+#version 0.1.2
+#update: 22.5.2024
+# (c) Pavol Gajdos, 2022-2024
 
 from time import time
 import sys
@@ -135,7 +135,7 @@ class FitTransit():
     '''class for fitting transits'''
     availableModels=['TransitUniform','TransitLinear','TransitQuadratic','TransitSquareRoot',
                      'TransitLogarithmic','TransitExponential','TransitPower2','TransitNonlinear',
-                     'Gauss','GaussModif','Lorentz','Voigt','Quad','Poly4','Mikulasek']   #list of available models
+                     'Gauss','GaussModif','Lorentz','Voigt','Quad','Poly4','Mikulasek','Binomial']   #list of available models
 
     def __init__(self,t,flux,err=None):
         '''loading times, fluxes, (errors)'''
@@ -197,6 +197,7 @@ class FitTransit():
             if 'Poly4' in model: s+='A, w2, w4, '
             if 'Voigt' in model: s+='A, tC, wG, wL, '
             if 'Mikulasek' in model: s+='A, C, K, tC, w, g, '
+            if 'Binomial' in model: s+='A, tC, T, k1, k2, '
             s+='p0, p1, p2'
             print(s)
 
@@ -526,6 +527,24 @@ class FitTransit():
         mik=1+A*(1+C*((t-tC)/w)**2+K*((t-tC)/w)**4)*(1-(1-np.exp(1-np.cosh((t-tC)/w)))**g)
 
         flux=mik*np.polyval(p,t-tC)         #calculates light curve
+
+        return flux
+
+    def Binomial(self,t,A,tC,T,k1,k2,p):
+        '''model of minimum/maximum/eclipse based on quasi binomial model
+        t - times of observations (np.array alebo float) [days]
+        tC - time of center of minimum [days]
+        A - amplitude
+        T - duration [days]
+        k1, k2 - exponents (standard values: k1=2, k2=1.5)
+        p - 2nd order polynom coefficients (in list / np.array)
+        output in fluxes
+        '''
+
+        model=1+A*(1-(2*np.abs(t-tC)/T)**k1)**k2
+        model[np.isnan(model)]=1
+
+        flux=model*np.polyval(p,t-tC)         #calculates light curve
 
         return flux
 
@@ -873,7 +892,7 @@ class FitTransit():
             else: err.append('fixed')   #fixed params
             #add units
             if x[0]=='a' or x[0]=='R': unit.append('Rstar')
-            elif x[0]=='P':
+            elif x[0]=='P' or x[0]=='T':
                 unit.append('d')
                 #also in years
                 params.append(x)
@@ -882,7 +901,7 @@ class FitTransit():
                 else: err.append(str(float(err[-1])/year)) #error calculated
                 unit.append('yr')
             elif x[0]=='t': unit.append('JD')
-            elif x[0] in 'ecpACKg': unit.append('')
+            elif x[0] in 'ecpACKgk': unit.append('')
             elif x[0]=='w':
                 if 'Transit' in self.model: unit.append('deg')
                 else: unit.append('d')
@@ -1296,6 +1315,10 @@ class FitTransit():
             model=self.Poly4(t,param['A'],param['tC'],param['w2'],param['w4'],p)
         elif self.model=='Mikulasek':
             model=self.Mikulasek(t,param['A'],param['C'],param['K'],param['tC'],param['w'],param['g'],p)
+        elif self.model=='Binomial':
+            model=self.Binomial(t,param['A'],param['tC'],param['T'],param['k1'],param['k2'],p)
+        else:
+            raise KeyError('Unknown model "'+self.model+'"! Available models are: '+', '.join(sorted(self.availableModels)))
 
         return model
 

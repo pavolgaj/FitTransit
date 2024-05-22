@@ -16,6 +16,5 @@ TODO:
 
 * ttv?
 * rel./abs. units (a,rp)
-* phase plot
 * ...
 
