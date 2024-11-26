@@ -1294,7 +1294,7 @@ class FitTransit():
             u=[]
             if 'Uniform' not in self.model:
                 u.append(param['c1'])
-                if ('Linear' not in self.model) or ('Power2' not in self.model):
+                if ('Linear' not in self.model) and ('Power2' not in self.model):
                     u.append(param['c2'])
                     if 'Nonlinear' in self.model:
                         u.append(param['c3'])
