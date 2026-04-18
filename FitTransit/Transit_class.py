@@ -1477,7 +1477,7 @@ class FitTransit():
                     if 'mag' in self.systemParams: m0=self.systemParams['mag']
                     err=2.5/np.log(10)*err/10**(-(flux-m0)/2.5)
                 if no_plot_err>0: errors=np.append(errors,np.argsort(abs(err))[-no_plot_err:])  #remove errorful points
-                ii=np.delete(ii,np.where(np.in1d(ii,errors)))
+                ii=np.delete(ii,np.where(np.isin(ii,errors)))
                 ax1.errorbar(k*x[ii],flux[ii],yerr=err[ii],fmt=color+'o',markersize=5,zorder=1)
             else:
                 #without errors
@@ -1635,10 +1635,10 @@ class FitTransit():
 
         if set_w:
             #using weights
-            ii=np.delete(ii,np.where(np.in1d(ii,errors)))
+            ii=np.delete(ii,np.where(np.isin(ii,errors)))
             for i in range(len(w)):
-                ax1.plot(k*x[np.where(np.in1d(ii,w[i]))],
-                        flux[np.where(np.in1d(ii,w[i]))],color+'o',markersize=size[i],label=legend[0],zorder=1)
+                ax1.plot(k*x[np.where(np.isin(ii,w[i]))],
+                        flux[np.where(np.isin(ii,w[i]))],color+'o',markersize=size[i],label=legend[0],zorder=1)
 
         else:
             #without weight
@@ -1653,11 +1653,11 @@ class FitTransit():
                     if 'mag' in self.systemParams: m0=self.systemParams['mag']
                     err=2.5/np.log(10)*err/10**(-(flux-m0)/2.5)
                 if no_plot_err>0: errors=np.append(errors,np.argsort(abs(err))[-no_plot_err:])  #remove errorful points
-                ii=np.delete(ii,np.where(np.in1d(ii,errors)))
+                ii=np.delete(ii,np.where(np.isin(ii,errors)))
                 ax1.errorbar(k*x[ii],flux[ii],yerr=err[ii],fmt=color+'o',markersize=5,label=legend[0],zorder=1)
             else:
                 #without errors
-                ii=np.delete(ii,np.where(np.in1d(ii,errors)))
+                ii=np.delete(ii,np.where(np.isin(ii,errors)))
                 ax1.plot(k*x[ii],flux[ii],color+'o',label=legend[0],zorder=1)
 
         #expand time interval for model LC
@@ -1866,10 +1866,10 @@ class FitTransit():
         else: color='b'
         if set_w:
             #using weights
-            ii=np.delete(ii,np.where(np.in1d(ii,errors)))
+            ii=np.delete(ii,np.where(np.isin(ii,errors)))
             for i in range(len(w)):
-                ax1.plot(k*x[np.where(np.in1d(ii,w[i]))],
-                        res[np.where(np.in1d(ii,w[i]))],color+'o',markersize=size[i])
+                ax1.plot(k*x[np.where(np.isin(ii,w[i]))],
+                        res[np.where(np.isin(ii,w[i]))],color+'o',markersize=size[i])
         else:
             #without weight
             if self._set_err:
@@ -1877,11 +1877,11 @@ class FitTransit():
                 if self._corr_err: err=self._old_err
                 else: err=self.err
                 if no_plot_err>0: errors=np.append(errors,np.argsort(abs(err))[-no_plot_err:])  #remove errorful points
-                ii=np.delete(ii,np.where(np.in1d(ii,errors)))
+                ii=np.delete(ii,np.where(np.isin(ii,errors)))
                 ax1.errorbar(k*x[ii],res[ii],yerr=err[ii]*100,fmt=color+'o',markersize=5)
             else:
                 #without errors
-                ii=np.delete(ii,np.where(np.in1d(ii,errors)))
+                ii=np.delete(ii,np.where(np.isin(ii,errors)))
                 ax1.plot(k*x[ii],res[ii],color+'o')
 
         if double_ax:
